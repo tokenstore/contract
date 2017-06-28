@@ -182,7 +182,7 @@ contract Decethex is SafeMath, Ownable, Deprecable {
     bytes32 hash = sha256(this, tokenGet, amountGet, tokenGive, amountGive, expires, nonce);
     // Check order signatures and expiration, also check if not fulfilled yet
 		if (ecrecover(sha3("\x19Ethereum Signed Message:\n32", hash), v, r, s) != user ||
-      //block.number > expires ||
+      block.number > expires ||
       safeAdd(orderFills[user][hash], amount) > amountGet) {
       throw;
     }
