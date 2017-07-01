@@ -51,44 +51,21 @@ contract Ownable {
     _;
   }
 
-  function transferOwnership(address newOwner) onlyOwner {
-    if (newOwner != address(0)) {
-      owner = newOwner;
-    }
-  }
-}
-
-// Deprecable interface to simplify owner checks
-
-contract Deprecable is Ownable {
-  // Address of a next version of the contract, can be used for user-triggered fund migrations
-  address public successor;
-  bool public deprecated;
-
-  function Deprecable() {
-    deprecated = false;
-  }
-
-  modifier deprecable() {
-    require(!deprecated);
-    _;
-  }
-
-  function deprecate(bool deprecated_, address successor_) onlyOwner {
-    deprecated = deprecated_;
-    successor = successor_;
+  function transferOwnership(address _newOwner) onlyOwner {
+    require(_newOwner != address(0));
+    owner = _newOwner;
   }
 }
 
 // Interface for trading discounts and rebates for specific accounts
 
 contract AccountModifiers {
-  function modifiers(address user) constant returns(uint takeFee, uint rebate);
+  function modifiers(address _user) constant returns(uint takeFee, uint rebate);
 }
 
 // Exchange contract
 
-contract Decethex is SafeMath, Ownable, Deprecable {
+contract Decethex is SafeMath, Ownable {
 
   // The account that will receive fees
   address feeAccount;
@@ -104,6 +81,13 @@ contract Decethex is SafeMath, Ownable, Deprecable {
 
   // Mapping of user accounts to mapping of order hashes to uints (amount of order that has been filled)
   mapping (address => mapping (bytes32 => uint)) public orderFills;
+  
+  // Address of a next and previous versions of the contract, also status of the contract
+  // can be used for user-triggered fund migrations
+  address public successor;
+  address public predecessor;
+  bool public deprecated;
+  uint16 public version;
 
   // Logging events
   // Note: Order creation is handled off-chain, see explanation further below
@@ -111,93 +95,121 @@ contract Decethex is SafeMath, Ownable, Deprecable {
   event Trade(address tokenGet, uint amountGet, address tokenGive, uint amountGive, address get, address give);
   event Deposit(address token, address user, uint amount, uint balance);
   event Withdraw(address token, address user, uint amount, uint balance);
+  event FundsMigrated(address user);
 
-  function Decethex(uint fee_) {
+  function Decethex(uint _fee, address _predecessor) {
     feeAccount = owner;
-    fee = fee_;
+    fee = _fee;
+    predecessor = _predecessor;
+    deprecated = false;
+    if (predecessor != address(0)) {
+      version = Decethex(predecessor).version() + 1;
+    } else {
+      version = 1;
+    }
   }
 
   // Throw on default handler to prevent direct transactions of Ether
   function() {
     throw;
   }
-
-  function changeFeeAccount(address feeAccount_) onlyOwner {
-    feeAccount = feeAccount_;
+  
+  modifier deprecable() {
+    require(!deprecated);
+    _;
   }
 
-  function changeAccountModifiers(address accountModifiers_) onlyOwner {
-    accountModifiers = accountModifiers_;
+  function deprecate(bool _deprecated, address _successor) onlyOwner {
+    deprecated = _deprecated;
+    successor = _successor;
+  }
+
+  function changeFeeAccount(address _feeAccount) onlyOwner {
+    require(_feeAccount != address(0));
+    feeAccount = _feeAccount;
+  }
+
+  function changeAccountModifiers(address _accountModifiers) onlyOwner {
+    accountModifiers = _accountModifiers;
   }
 
   // Fee can only be decreased!
-  function changeFee(uint fee_) onlyOwner {
-    require(fee_ <= fee);
-    fee = fee_;
+  function changeFee(uint _fee) onlyOwner {
+    require(_fee <= fee);
+    fee = _fee;
   }
+  
+  ////////////////////////////////////////////////////////////////////////////////
+  // Deposits, withdrawals, balances
+  ////////////////////////////////////////////////////////////////////////////////
 
   function deposit() payable deprecable {
     tokens[0][msg.sender] = safeAdd(tokens[0][msg.sender], msg.value);
     Deposit(0, msg.sender, msg.value, tokens[0][msg.sender]);
   }
 
-  function withdraw(uint amount) {
-    require(tokens[0][msg.sender] >= amount);
-    tokens[0][msg.sender] = safeSub(tokens[0][msg.sender], amount);
-    if (!msg.sender.call.value(amount)()) {
+  function withdraw(uint _amount) {
+    require(tokens[0][msg.sender] >= _amount);
+    tokens[0][msg.sender] = safeSub(tokens[0][msg.sender], _amount);
+    if (!msg.sender.call.value(_amount)()) {
       throw;
     }
-    Withdraw(0, msg.sender, amount, tokens[0][msg.sender]);
+    Withdraw(0, msg.sender, _amount, tokens[0][msg.sender]);
   }
 
-  function depositToken(address token, uint amount) deprecable {
-    // Note that Token(address).approve(this, amount) needs to be called
+  function depositToken(address _token, uint _amount) deprecable {
+    // Note that Token(_token).approve(this, _amount) needs to be called
     // first or this contract will not be able to do the transfer.
-    require(token != 0);
-    if (!Token(token).transferFrom(msg.sender, this, amount)) {
+    require(_token != 0);
+    if (!Token(_token).transferFrom(msg.sender, this, _amount)) {
       throw;
     }
-    tokens[token][msg.sender] = safeAdd(tokens[token][msg.sender], amount);
-    Deposit(token, msg.sender, amount, tokens[token][msg.sender]);
+    tokens[_token][msg.sender] = safeAdd(tokens[_token][msg.sender], _amount);
+    Deposit(_token, msg.sender, _amount, tokens[_token][msg.sender]);
   }
 
-  function withdrawToken(address token, uint amount) {
-    require(token != 0);
-    require(tokens[token][msg.sender] >= amount);
-    tokens[token][msg.sender] = safeSub(tokens[token][msg.sender], amount);
-    if (!Token(token).transfer(msg.sender, amount)) {
+  function withdrawToken(address _token, uint _amount) {
+    require(_token != 0);
+    require(tokens[_token][msg.sender] >= _amount);
+    tokens[_token][msg.sender] = safeSub(tokens[_token][msg.sender], _amount);
+    if (!Token(_token).transfer(msg.sender, _amount)) {
       throw;
     }
-    Withdraw(token, msg.sender, amount, tokens[token][msg.sender]);
+    Withdraw(_token, msg.sender, _amount, tokens[_token][msg.sender]);
   }
 
-  function balanceOf(address token, address user) constant returns (uint) {
-    return tokens[token][user];
+  function balanceOf(address _token, address _user) constant returns (uint) {
+    return tokens[_token][_user];
   }
+  
+  ////////////////////////////////////////////////////////////////////////////////
+  // Trading
+  ////////////////////////////////////////////////////////////////////////////////
 
   // Note: Order creation happens off-chain but the orders are signed by creators,
   // we validate the contents and the creator address in the logic below
 
-  function trade(address tokenGet, uint amountGet, address tokenGive, uint amountGive, uint expires, uint nonce, address user, uint8 v, bytes32 r, bytes32 s, uint amount) {
-    bytes32 hash = sha256(this, tokenGet, amountGet, tokenGive, amountGive, expires, nonce);
+  function trade(address _tokenGet, uint _amountGet, address _tokenGive, uint _amountGive,
+      uint _expires, uint _nonce, address _user, uint8 _v, bytes32 _r, bytes32 _s, uint _amount) {
+    bytes32 hash = sha256(this, _tokenGet, _amountGet, _tokenGive, _amountGive, _expires, _nonce);
     // Check order signatures and expiration, also check if not fulfilled yet
-		if (ecrecover(sha3("\x19Ethereum Signed Message:\n32", hash), v, r, s) != user ||
-      block.number > expires ||
-      safeAdd(orderFills[user][hash], amount) > amountGet) {
+		if (ecrecover(sha3("\x19Ethereum Signed Message:\n32", hash), _v, _r, _s) != _user ||
+      block.number > _expires ||
+      safeAdd(orderFills[_user][hash], _amount) > _amountGet) {
       throw;
     }
-    tradeBalances(tokenGet, amountGet, tokenGive, amountGive, user, msg.sender, amount);
-    orderFills[user][hash] = safeAdd(orderFills[user][hash], amount);
-    Trade(tokenGet, amount, tokenGive, amountGive * amount / amountGet, user, msg.sender);
+    tradeBalances(_tokenGet, _amountGet, _tokenGive, _amountGive, _user, msg.sender, _amount);
+    orderFills[_user][hash] = safeAdd(orderFills[_user][hash], _amount);
+    Trade(_tokenGet, _amount, _tokenGive, _amountGive * _amount / _amountGet, _user, msg.sender);
   }
 
-  function tradeBalances(address tokenGet, uint amountGet, address tokenGive, uint amountGive,
-    address user, address caller, uint amount) private {
-
+  function tradeBalances(address _tokenGet, uint _amountGet, address _tokenGive, uint _amountGive,
+      address _user, address _caller, uint _amount) private {
+      
     // Apply modifiers
     var (feeTake, rebate) = (fee, uint(0));
     if (accountModifiers != address(0)) {
-      (feeTake, rebate) = AccountModifiers(accountModifiers).modifiers(user);
+      (feeTake, rebate) = AccountModifiers(accountModifiers).modifiers(_user);
       // Check that the fee is never higher then the default one
       if (feeTake > fee) {
         feeTake = fee;
@@ -208,47 +220,124 @@ contract Decethex is SafeMath, Ownable, Deprecable {
       }
     }
 
-    uint feeTakeValue = safeMul(amount, feeTake) / (1 ether);
+    uint feeTakeValue = safeMul(_amount, feeTake) / (1 ether);
     uint rebateValue = safeMul(rebate, feeTakeValue) / (1 ether); // % of taker fee
-    uint tokenGiveValue = safeMul(amountGive, amount) / amountGet; // Proportionate to request ratio
-    tokens[tokenGet][user] = safeAdd(tokens[tokenGet][user], safeAdd(amount, rebateValue));
-    tokens[tokenGet][caller] = safeSub(tokens[tokenGet][caller], safeAdd(amount, feeTakeValue));
-    tokens[tokenGive][user] = safeSub(tokens[tokenGive][user], tokenGiveValue);
-    tokens[tokenGive][caller] = safeAdd(tokens[tokenGive][caller], tokenGiveValue);
-    tokens[tokenGet][feeAccount] = safeAdd(tokens[tokenGet][feeAccount], safeSub(feeTakeValue, rebateValue));
+    uint tokenGiveValue = safeMul(_amountGive, _amount) / _amountGet; // Proportionate to request ratio
+    tokens[_tokenGet][_user] = safeAdd(tokens[_tokenGet][_user], safeAdd(_amount, rebateValue));
+    tokens[_tokenGet][_caller] = safeSub(tokens[_tokenGet][_caller], safeAdd(_amount, feeTakeValue));
+    tokens[_tokenGive][_user] = safeSub(tokens[_tokenGive][_user], tokenGiveValue);
+    tokens[_tokenGive][_caller] = safeAdd(tokens[_tokenGive][_caller], tokenGiveValue);
+    tokens[_tokenGet][feeAccount] = safeAdd(tokens[_tokenGet][feeAccount], safeSub(feeTakeValue, rebateValue));
   }
 
-  function testTrade(address tokenGet, uint amountGet, address tokenGive, uint amountGive, uint expires, uint nonce, address user, uint8 v, bytes32 r, bytes32 s, uint amount, address sender) constant returns(bool) {
-    if (tokens[tokenGet][sender] < amount ||
-      availableVolume(tokenGet, amountGet, tokenGive, amountGive, expires, nonce, user, v, r, s) < amount) {
+  function testTrade(address _tokenGet, uint _amountGet, address _tokenGive, uint _amountGive, uint _expires,
+      uint _nonce, address _user, uint8 _v, bytes32 _r, bytes32 _s, uint _amount, address _sender) constant returns(bool) {
+    if (tokens[_tokenGet][_sender] < _amount ||
+      availableVolume(_tokenGet, _amountGet, _tokenGive, _amountGive, _expires, _nonce, _user, _v, _r, _s) < _amount) {
       return false;
     }
     return true;
   }
 
-  function availableVolume(address tokenGet, uint amountGet, address tokenGive, uint amountGive, uint expires, uint nonce, address user, uint8 v, bytes32 r, bytes32 s) constant returns(uint) {
-    bytes32 hash = sha256(this, tokenGet, amountGet, tokenGive, amountGive, expires, nonce);
-    if (ecrecover(sha3("\x19Ethereum Signed Message:\n32", hash),v,r,s) != user ||
-      block.number > expires) {
+  function availableVolume(address _tokenGet, uint _amountGet, address _tokenGive, uint _amountGive, uint _expires,
+      uint _nonce, address _user, uint8 _v, bytes32 _r, bytes32 _s) constant returns(uint) {
+    bytes32 hash = sha256(this, _tokenGet, _amountGet, _tokenGive, _amountGive, _expires, _nonce);
+    if (ecrecover(sha3("\x19Ethereum Signed Message:\n32", hash), _v, _r, _s) != _user ||
+      block.number > _expires) {
       return 0;
     }
-    uint available1 = safeSub(amountGet, orderFills[user][hash]);
-    uint available2 = safeMul(tokens[tokenGive][user], amountGet) / amountGive;
+    uint available1 = safeSub(_amountGet, orderFills[_user][hash]);
+    uint available2 = safeMul(tokens[_tokenGive][_user], _amountGet) / _amountGive;
     if (available1 < available2) return available1;
     return available2;
   }
 
-  function amountFilled(address tokenGet, uint amountGet, address tokenGive, uint amountGive, uint expires, uint nonce, address user) constant returns(uint) {
-    bytes32 hash = sha256(this, tokenGet, amountGet, tokenGive, amountGive, expires, nonce);
-    return orderFills[user][hash];
+  function amountFilled(address _tokenGet, uint _amountGet, address _tokenGive, uint _amountGive, uint _expires,
+      uint _nonce, address _user) constant returns(uint) {
+    bytes32 hash = sha256(this, _tokenGet, _amountGet, _tokenGive, _amountGive, _expires, _nonce);
+    return orderFills[_user][hash];
   }
 
-  function cancelOrder(address tokenGet, uint amountGet, address tokenGive, uint amountGive, uint expires, uint nonce, uint8 v, bytes32 r, bytes32 s) {
-    bytes32 hash = sha256(this, tokenGet, amountGet, tokenGive, amountGive, expires, nonce);
-    if (!(ecrecover(sha3("\x19Ethereum Signed Message:\n32", hash), v, r, s) == msg.sender)) {
+  function cancelOrder(address _tokenGet, uint _amountGet, address _tokenGive, uint _amountGive, uint _expires,
+      uint _nonce, uint8 _v, bytes32 _r, bytes32 _s) {
+    bytes32 hash = sha256(this, _tokenGet, _amountGet, _tokenGive, _amountGive, _expires, _nonce);
+    if (!(ecrecover(sha3("\x19Ethereum Signed Message:\n32", hash), _v, _r, _s) == msg.sender)) {
       throw;
     }
-    orderFills[msg.sender][hash] = amountGet;
-    Cancel(tokenGet, amountGet, tokenGive, amountGive, expires, nonce, msg.sender, v, r, s);
+    orderFills[msg.sender][hash] = _amountGet;
+    Cancel(_tokenGet, _amountGet, _tokenGive, _amountGive, _expires, _nonce, msg.sender, _v, _r, _s);
+  }
+  
+  ////////////////////////////////////////////////////////////////////////////////
+  // Migrations
+  ////////////////////////////////////////////////////////////////////////////////
+
+  // User-triggered (!) fund migrations in case contract got updated
+  // Similar to withdraw but we use a successor account instead
+  // As we don't store user tokens list on chain, it has to be passed from the outside
+  function migrateFunds(address[] _tokens) {
+  
+    // Get the latest successor in the chain
+    require(successor != address(0));
+    Decethex newExchange = Decethex(successor);
+    for (uint16 n = 0; n < 20; n++) {  // We will look past 20 contracts in the future
+      address nextSuccessor = newExchange.successor();
+      if (nextSuccessor == address(this)) {  // Circular succession
+        throw;
+      }
+      if (nextSuccessor == address(0)) { // We reached the newest, stop
+        break;
+      }
+      newExchange = Decethex(nextSuccessor);
+    }
+
+    // Ether
+    uint etherAmount = tokens[0][msg.sender];
+    if (etherAmount > 0) {
+      tokens[0][msg.sender] = 0;
+      newExchange.depositForUser.value(etherAmount)(msg.sender);
+    }
+
+    // Tokens
+    for (n = 0; n < _tokens.length; n++) {
+      address token = _tokens[n];
+      require(token != address(0)); // 0 = Ether, we handle it above
+      uint tokenAmount = tokens[token][msg.sender];
+      if (tokenAmount == 0) {
+        continue;
+      }
+      if (!Token(token).approve(newExchange, tokenAmount)) {
+        throw;
+      }
+      tokens[token][msg.sender] = 0;
+      newExchange.depositTokenForUser(token, tokenAmount, msg.sender);
+    }
+
+    FundsMigrated(msg.sender);
+  }
+
+  // This is used for migrations only. To be called by previous exchange only,
+  // user-triggered, on behalf of the user called the migrateFunds method.
+  // Note that it does exactly the same as depositToken, but as this is called
+  // by a previous generation of exchange itself, we credit internally not the
+  // previous exchange, but the user it was called for.
+  function depositForUser(address _user) payable deprecable {
+    require(_user != address(0));
+    require(msg.value > 0);
+    Decethex caller = Decethex(msg.sender);
+    require(caller.version() > 0); // Make sure it's an exchange account
+    tokens[0][_user] = safeAdd(tokens[0][_user], msg.value);
+  }
+
+  function depositTokenForUser(address _token, uint _amount, address _user) deprecable {
+    require(_token != address(0));
+    require(_user != address(0));
+    require(_amount > 0);
+    Decethex caller = Decethex(msg.sender);
+    require(caller.version() > 0); // Make sure it's an exchange account
+    if (!Token(_token).transferFrom(msg.sender, this, _amount)) {
+      throw;
+    }
+    tokens[_token][_user] = safeAdd(tokens[_token][_user], _amount);
   }
 }
