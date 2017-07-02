@@ -59,8 +59,8 @@ contract Ownable {
 
 // Interface for trading discounts and rebates for specific accounts
 
-contract AccountModifiers {
-  function modifiers(address _user) constant returns(uint takeFee, uint rebate);
+contract AccountModifiersInterface {
+  function modifiers(address _maker, address _taker) constant returns(uint takeFeeDiscount, uint rebatePercentage);
 }
 
 // Exchange contract
@@ -202,27 +202,28 @@ contract Decethex is SafeMath, Ownable {
     orderFills[_user][hash] = safeAdd(orderFills[_user][hash], _amount);
     Trade(_tokenGet, _amount, _tokenGive, _amountGive * _amount / _amountGet, _user, msg.sender);
   }
-
+  
   function tradeBalances(address _tokenGet, uint _amountGet, address _tokenGive, uint _amountGive,
       address _user, address _caller, uint _amount) private {
-      
-    // Apply modifiers
-    var (feeTake, rebate) = (fee, uint(0));
-    if (accountModifiers != address(0)) {
-      (feeTake, rebate) = AccountModifiers(accountModifiers).modifiers(_user);
-      // Check that the fee is never higher then the default one
-      if (feeTake > fee) {
-        feeTake = fee;
-      }
-      // Check that rebate is never higher than 100% (of the taker fee)
-      if (rebate > 1 ether) {
-        rebate = 0;
-      }
-    }
 
-    uint feeTakeValue = safeMul(_amount, feeTake) / (1 ether);
-    uint rebateValue = safeMul(rebate, feeTakeValue) / (1 ether); // % of taker fee
+    uint feeTakeValue = safeMul(_amount, fee) / (1 ether);
+    uint rebateValue = 0;
     uint tokenGiveValue = safeMul(_amountGive, _amount) / _amountGet; // Proportionate to request ratio
+
+    // Apply modifiers
+    if (accountModifiers != address(0)) {
+      var (feeTakeDiscount, rebatePercentage) = AccountModifiersInterface(accountModifiers).modifiers(_user, _caller);
+      // Check that the discounts/rebates are never higher then 100%
+      if (feeTakeDiscount > 100) {
+        feeTakeDiscount = 0;
+      }
+      if (rebatePercentage > 100) {
+        rebatePercentage = 0;
+      }
+      feeTakeValue = safeMul(feeTakeValue, 100 - feeTakeDiscount) / 100;  // discounted fee
+      rebateValue = safeMul(rebatePercentage, feeTakeValue) / 100;        // % of actual taker fee
+    }
+    
     tokens[_tokenGet][_user] = safeAdd(tokens[_tokenGet][_user], safeAdd(_amount, rebateValue));
     tokens[_tokenGet][_caller] = safeSub(tokens[_tokenGet][_caller], safeAdd(_amount, feeTakeValue));
     tokens[_tokenGive][_user] = safeSub(tokens[_tokenGive][_user], tokenGiveValue);

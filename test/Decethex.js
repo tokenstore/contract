@@ -1,19 +1,22 @@
 var Decethex = artifacts.require("./Decethex.sol");
+var AccountModifiers = artifacts.require("./AccountModifiers.sol");
 var Token = artifacts.require("./Token.sol");
 
 var sha256 = require('js-sha256').sha256;
 var util = require('./util.js');
 var async = require('async');
+var config = require('../truffle.js');
 
 contract('Decethex', function(accounts) {
 
   var unlockedAccounts = 5;
   var accs = accounts.slice(0, unlockedAccounts - 1); // Last account is used for fees only
+  const gasPrice = config.networks.development.gasPrice;
   const feeAccount = unlockedAccounts - 1;
   const fee = 3000000000000000;
-  const userToken = 200000;
-  const depositedToken = 100000;
-  const depositedEther = 10000;
+  const userToken = 2000000;
+  const depositedEther = 100000;
+  const depositedToken = 1000000;
   const defaultExpirationInBlocks = 100;
   const failedTransactionError = "Error: VM Exception while processing transaction: invalid opcode";
 
@@ -96,7 +99,7 @@ contract('Decethex', function(accounts) {
     });
   }
   
-  function executeChecks(checks) {
+  function executePromises(checks) {
     return new Promise((resolve, reject) => {
       async.eachSeries(checks,
         (check, callbackEach) => {
@@ -112,12 +115,24 @@ contract('Decethex', function(accounts) {
   
   function getBlockNumber() {
     return new Promise((resolve, reject) => {
-      web3.eth.getBlockNumber((err, res) => {
-        if (err) {
-          reject(err);
+      web3.eth.getBlockNumber((error, result) => {
+        if (error) {
+          reject(error);
           return;
         }
-        resolve(res);
+        resolve(result);
+      });
+    });
+  }
+  
+  function getAccountBalance(account) {
+    return new Promise((resolve, reject) => {
+      web3.eth.getBalance(account, (error, result) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(result);
       });
     });
   }
@@ -152,7 +167,7 @@ contract('Decethex', function(accounts) {
   // Tests functions
   ///////////////////////////////////////////////////////////////////////////////////
   
-  it("Initial configuration should be valid", function() {
+  it("Depositing", function() {
     
     return initialConfiguration().then(function(result) {
       var dec = result.dec;
@@ -183,10 +198,62 @@ contract('Decethex', function(accounts) {
         }) }
       ];
       
-      return executeChecks(checks);
+      return executePromises(checks);
     });
   });
+  
+  it("Withdrawals", function() {
 
+    var dec, token1;
+    var userEther;
+    var gasSpent = 0; // We will need it to get precise remaining ether amount
+    
+    return initialConfiguration().then(function(result) {
+      dec = result.dec;
+      token1 = result.token1;
+      
+
+      var checks = [
+        function() { return getAccountBalance(accounts[0]).then(function(result) {
+          userEther = result.toNumber();
+        }) },
+        function() { return token1.balanceOf.call(accounts[0]).then(function(result) {
+          assert.equal(result.toNumber(), userToken - depositedToken, "Token #1 deposit for acc #0 is not correct");
+        }) },
+      ];
+      
+      return executePromises(checks);
+      
+    }).then(function(result) {
+
+      var operations = [
+        function() { return dec.withdraw(depositedEther, {from: accounts[0]}).then(function(result) { gasSpent += result.receipt.gasUsed; }); },
+        function() { return dec.withdrawToken(token1.address, depositedToken, {from: accounts[0]}).then(function(result) { gasSpent += result.receipt.gasUsed; }); },
+      ];
+      
+      return executePromises(operations);
+      
+    }).then(function(result) {
+
+      var checks = [
+        function() { return getAccountBalance(accounts[0]).then(function(result) {
+          assert.equal(result.toNumber(), userEther + depositedEther - gasSpent * gasPrice, "Ether balance was not increased");
+        }) },
+        function() { return token1.balanceOf.call(accounts[0]).then(function(result) {
+          assert.equal(result.toNumber(), userToken, "Token #1 balance is not increased");
+        }) },
+        function() { return dec.balanceOf.call(0, accounts[0]).then(function(result) {
+          assert.equal(result.toNumber(), 0, "Exchange still thinks it holds some ether for the user");
+        }) },
+        function() { return dec.balanceOf.call(token1.address, accounts[0]).then(function(result) {
+          assert.equal(result.toNumber(), 0, "Exchange still thinks it holds some tokens for the user");
+        }) },
+      ];
+      
+      return executePromises(checks);
+    });
+  });
+  
   // Note: this tests only Eth to Token but since we treat eth internally
   // as a token with 0 address, direction is not important. It can also be
   // Token to Token for that matter.
@@ -196,9 +263,9 @@ contract('Decethex', function(accounts) {
     
     var tokenGet = 0;       // Eth as a token type
     var tokenGive;          // Token address for wanted token
-    var amountGet = 2000;   // Eth wanted
-    var amountGive = 10000; // Token given in return
-    var amountGiven = 1000; // Ether given by a counter-party
+    var amountGet = 20000;   // Eth wanted
+    var amountGive = 100000; // Token given in return
+    var amountGiven = 10000; // Ether given by a counter-party
     
     return initialConfiguration().then(function(result) {
 
@@ -211,23 +278,85 @@ contract('Decethex', function(accounts) {
 
       var checks = [
         function() { return dec.balanceOf.call(tokenGive, accounts[0]).then(function(result) {
-          assert.equal(result.toNumber(), 95000, "Token sale for acc #0 was not successful");
+          assert.equal(result.toNumber(), 950000, "Token sale for acc #0 was not successful");
         }) },
         function() { return dec.balanceOf.call(tokenGive, accounts[1]).then(function(result) {
-          assert.equal(result.toNumber(), 105000, "Token purchase for acc #1 was not successful");
+          assert.equal(result.toNumber(), 1050000, "Token purchase for acc #1 was not successful");
         }) },
         function() { return dec.balanceOf.call(tokenGet, accounts[0]).then(function(result) {
-          assert.equal(result.toNumber(), 11000, "Eth purchase for acc #0 was not successful");
+          assert.equal(result.toNumber(), 110000, "Eth purchase for acc #0 was not successful");
         }) },
         function() { return dec.balanceOf.call(tokenGet, accounts[1]).then(function(result) {
-          assert.equal(result.toNumber(), 8997, "Eth sale for acc #1 was not successful");
+          assert.equal(result.toNumber(), 89970, "Eth sale for acc #1 was not successful");
         }) },
         function() { return dec.balanceOf.call(tokenGet, accounts[feeAccount]).then(function(result) {
-          assert.equal(result.toNumber(), 3, "Eth fee is incorrect");
+          assert.equal(result.toNumber(), 30, "Eth fee is incorrect");
         }) }
       ];
 
-      return executeChecks(checks);
+      return executePromises(checks);
+    });
+  });
+  
+  it("Account modifiers", function() {
+  
+    var dec;
+    var accountModifiers;
+    
+    var tokenGet = 0;       // Eth as a token type
+    var tokenGive;          // Token address for wanted token
+    var amountGet = 20000;   // Eth wanted
+    var amountGive = 100000; // Token given in return
+    var amountGiven = 10000; // Ether given by a counter-party
+    
+    return initialConfiguration().then(function(result) {
+
+      dec = result.dec;
+      tokenGive = result.token1.address;
+      
+      return AccountModifiers.new({from: accounts[feeAccount]});
+    }).then(function(result) {
+    
+    	accountModifiers = result;
+    	return accountModifiers.setModifiers(accounts[0], 20, 30, {from: accounts[feeAccount]});
+    	
+    }).then(function(result) {
+    	
+    	return accountModifiers.setModifiers(accounts[1], 40, 50, {from: accounts[feeAccount]});
+    	
+    }).then(function(result) {
+    
+      return dec.changeAccountModifiers(accountModifiers.address, {from: accounts[feeAccount]});
+    
+    }).then(function(result) {
+
+      return executeOrder(dec, accounts[0], tokenGet, amountGet, tokenGive, amountGive, amountGiven, accounts[1]);
+
+    }).then(function(result) {
+
+      // Based on the numbers above taker fee discount (account #1) is 40%
+      // maker rebate (account #0) is 30%. For default fee of 0.3% (30 wei)
+      // that would translate in (100% - 40%) * 30 wei = 18 wei taker fee and
+      // 30% * 18 wei = 5.4 (~5) wei as maker rebate
+      var checks = [
+        function() { return dec.balanceOf.call(tokenGive, accounts[0]).then(function(result) {
+          assert.equal(result.toNumber(), 950000, "Token sale for acc #0 was not successful");
+        }) },
+        function() { return dec.balanceOf.call(tokenGive, accounts[1]).then(function(result) {
+          assert.equal(result.toNumber(), 1050000, "Token purchase for acc #1 was not successful");
+        }) },
+        function() { return dec.balanceOf.call(tokenGet, accounts[0]).then(function(result) {
+          assert.equal(result.toNumber(), 110005, "Eth purchase for acc #0 was not successful");
+        }) },
+        function() { return dec.balanceOf.call(tokenGet, accounts[1]).then(function(result) {
+          assert.equal(result.toNumber(), 89982 /*100000-18*/, "Eth sale for acc #1 was not successful");
+        }) },
+        function() { return dec.balanceOf.call(tokenGet, accounts[feeAccount]).then(function(result) {
+          assert.equal(result.toNumber(), 13 /*18-5*/, "Eth fee is incorrect");
+        }) }
+      ];
+
+      return executePromises(checks);
     });
   });
   
@@ -342,7 +471,7 @@ contract('Decethex', function(accounts) {
         }) }
       ];
 
-      return executeChecks(checks);
+      return executePromises(checks);
       
     }).then(function(result) {
       return dec.migrateFunds([token1.address, token2.address], {from: accounts[1]});
@@ -381,7 +510,6 @@ contract('Decethex', function(accounts) {
           assert.equal(result.toNumber(), depositedToken, "Token #2 stores incorrect value for newDec");
         }) },
         
-        
         // Bonus: check that normal users cannot access the migration helpers
         // so they cannot send to somebody else by mistake
         function() {
@@ -402,13 +530,7 @@ contract('Decethex', function(accounts) {
         },
       ];
 
-      return executeChecks(checks);      
+      return executePromises(checks);      
     } );
   });
-  
-  // TODO: Test more complex transactions (trades list)
-  
-  // TODO: Test account modifiers effects
-  
-  // TODO: Test Withdrawal of tokens and ether
 });

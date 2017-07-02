@@ -21,15 +21,15 @@ contract Ownable {
 
 contract AccountModifiers is Ownable {
 
-  // 0 - taker fee, in % (Eg: 3000000000000000)
-  // 1 - rebate, in % of taker fee (Eg: 1000000000000000000 for 100%)
-  mapping (address => uint[2]) public accountModifiers;
+  mapping (address => uint) public takerFeeDiscounts;   // in % of taker fee (Eg: 100 for 100%)
+  mapping (address => uint) public rebatePercentages;  // in % of taker fee charged
 
-  function setModifiers(address user, uint takeFee, uint rebate) onlyOwner {
-    accountModifiers[user] = [takeFee, rebate];
+  function setModifiers(address _user, uint _takeFeeDiscount, uint _rebatePercentage) onlyOwner {
+    takerFeeDiscounts[_user] = _takeFeeDiscount;
+    rebatePercentages[_user] = _rebatePercentage;
   }
 
-  function modifiers(address user) constant returns(uint takeFee, uint rebate) {
-    return (accountModifiers[user][0], accountModifiers[user][1]);
+  function modifiers(address _maker, address _taker) constant returns(uint takeFeeDiscount, uint rebatePercentage) {
+    return (takerFeeDiscounts[_taker], rebatePercentages[_maker]);
   }
 }
