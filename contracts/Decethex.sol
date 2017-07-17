@@ -60,7 +60,14 @@ contract Ownable {
 // Interface for trading discounts and rebates for specific accounts
 
 contract AccountModifiersInterface {
-  function modifiers(address _maker, address _taker) constant returns(uint takeFeeDiscount, uint rebatePercentage);
+  function accountModifiers(address _user) constant returns(uint takeFeeDiscount, uint rebatePercentage);
+  function tradeModifiers(address _maker, address _taker) constant returns(uint takeFeeDiscount, uint rebatePercentage);
+}
+
+// Interface for trade tacker
+
+contract TradeTrackerInterface {
+  function tradeComplete(address _tokenGet, uint _amountGet, address _tokenGive, uint _amountGive, address _get, address _give, uint _takerFee, uint _makerRebate);
 }
 
 // Exchange contract
@@ -72,6 +79,9 @@ contract Decethex is SafeMath, Ownable {
 
   // The account that stores fee discounts/rebates
   address accountModifiers;
+  
+  // Trade tracker account
+  address tradeTracker;
 
   // We charge only the takers and this is the fee, percentage times 1 ether
   uint public fee;
@@ -132,11 +142,24 @@ contract Decethex is SafeMath, Ownable {
   function changeAccountModifiers(address _accountModifiers) onlyOwner {
     accountModifiers = _accountModifiers;
   }
+  
+  function changeTradeTracker(address _tradeTracker) onlyOwner {
+    tradeTracker = _tradeTracker;
+  }
 
   // Fee can only be decreased!
   function changeFee(uint _fee) onlyOwner {
     require(_fee <= fee);
     fee = _fee;
+  }
+  
+  // Allows a user to get her current discount/rebate
+  function getAccountModifiers() constant returns(uint takeFeeDiscount, uint rebatePercentage) {
+    if (accountModifiers != address(0)) {
+      return AccountModifiersInterface(accountModifiers).accountModifiers(msg.sender);
+    } else {
+      return (0, 0);
+    }
   }
   
   ////////////////////////////////////////////////////////////////////////////////
@@ -212,7 +235,7 @@ contract Decethex is SafeMath, Ownable {
 
     // Apply modifiers
     if (accountModifiers != address(0)) {
-      var (feeTakeDiscount, rebatePercentage) = AccountModifiersInterface(accountModifiers).modifiers(_user, _caller);
+      var (feeTakeDiscount, rebatePercentage) = AccountModifiersInterface(accountModifiers).tradeModifiers(_user, _caller);
       // Check that the discounts/rebates are never higher then 100%
       if (feeTakeDiscount > 100) {
         feeTakeDiscount = 0;
@@ -229,6 +252,10 @@ contract Decethex is SafeMath, Ownable {
     tokens[_tokenGive][_user] = safeSub(tokens[_tokenGive][_user], tokenGiveValue);
     tokens[_tokenGive][_caller] = safeAdd(tokens[_tokenGive][_caller], tokenGiveValue);
     tokens[_tokenGet][feeAccount] = safeAdd(tokens[_tokenGet][feeAccount], safeSub(feeTakeValue, rebateValue));
+    
+    if (tradeTracker != address(0)) {
+      TradeTrackerInterface(tradeTracker).tradeComplete(_tokenGet, _amount, _tokenGive, tokenGiveValue, _user, _caller, feeTakeValue, rebateValue);
+    }
   }
 
   function testTrade(address _tokenGet, uint _amountGet, address _tokenGive, uint _amountGive, uint _expires,

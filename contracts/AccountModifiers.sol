@@ -29,7 +29,11 @@ contract AccountModifiers is Ownable {
     rebatePercentages[_user] = _rebatePercentage;
   }
 
-  function modifiers(address _maker, address _taker) constant returns(uint takeFeeDiscount, uint rebatePercentage) {
+  function accountModifiers(address _user) constant returns(uint takeFeeDiscount, uint rebatePercentage) {
+    return (takerFeeDiscounts[_user], rebatePercentages[_user]);
+  }
+  
+  function tradeModifiers(address _maker, address _taker) constant returns(uint takeFeeDiscount, uint rebatePercentage) {
     return (takerFeeDiscounts[_taker], rebatePercentages[_maker]);
   }
 }
