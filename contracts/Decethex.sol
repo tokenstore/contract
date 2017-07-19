@@ -102,7 +102,7 @@ contract Decethex is SafeMath, Ownable {
   // Logging events
   // Note: Order creation is handled off-chain, see explanation further below
   event Cancel(address tokenGet, uint amountGet, address tokenGive, uint amountGive, uint expires, uint nonce, address user, uint8 v, bytes32 r, bytes32 s);
-  event Trade(address tokenGet, uint amountGet, address tokenGive, uint amountGive, address get, address give);
+  event Trade(address tokenGet, uint amountGet, address tokenGive, uint amountGive, address get, address give, uint nonce);
   event Deposit(address token, address user, uint amount, uint balance);
   event Withdraw(address token, address user, uint amount, uint balance);
   event FundsMigrated(address user);
@@ -223,7 +223,7 @@ contract Decethex is SafeMath, Ownable {
     }
     tradeBalances(_tokenGet, _amountGet, _tokenGive, _amountGive, _user, msg.sender, _amount);
     orderFills[_user][hash] = safeAdd(orderFills[_user][hash], _amount);
-    Trade(_tokenGet, _amount, _tokenGive, _amountGive * _amount / _amountGet, _user, msg.sender);
+    Trade(_tokenGet, _amount, _tokenGive, _amountGive * _amount / _amountGet, _user, msg.sender, _nonce);
   }
   
   function tradeBalances(address _tokenGet, uint _amountGet, address _tokenGive, uint _amountGive,
