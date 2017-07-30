@@ -278,18 +278,18 @@ export function sign (web3, address, msgToSignIn, privateKeyIn, callback) {
   } else {
     web3.version.getNode((error, node) => {
       // these nodes still use old-style eth_sign
-      if (node && (node.match('TestRPC') || node.match('MetaMask'))) {
+      if (node && node.match('MetaMask')) {
         msgToSign = prefixMessage(msgToSign)
       }
 
       web3.eth.sign(address, msgToSign, (err, sigResult) => {
         if (err) {
-          callback('Failed to sign message')
+          callback('Failed to sign message 1')
         } else {
           const sigHash = sigResult
           const sig = ethUtil.fromRpcSig(sigHash)
           let msg
-          if (node && (node.match('TestRPC') || node.match('MetaMask'))) {
+          if (node && node.match('MetaMask')) {
             msg = new Buffer(msgToSign.slice(2), 'hex')
           } else {
             msg = new Buffer(prefixMessage(msgToSign).slice(2), 'hex')
@@ -301,7 +301,7 @@ export function sign (web3, address, msgToSignIn, privateKeyIn, callback) {
             const result = { r, s, v }
             callback(undefined, result)
           } else {
-            callback('Failed to sign message')
+            callback('Failed to sign message 2')
           }
         }
       })
