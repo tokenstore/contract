@@ -121,7 +121,7 @@ contract Decethex is SafeMath, Ownable {
 
   // Throw on default handler to prevent direct transactions of Ether
   function() {
-    throw;
+    revert();
   }
   
   modifier deprecable() {
@@ -175,7 +175,7 @@ contract Decethex is SafeMath, Ownable {
     require(tokens[0][msg.sender] >= _amount);
     tokens[0][msg.sender] = safeSub(tokens[0][msg.sender], _amount);
     if (!msg.sender.call.value(_amount)()) {
-      throw;
+      revert();
     }
     Withdraw(0, msg.sender, _amount, tokens[0][msg.sender]);
   }
@@ -185,7 +185,7 @@ contract Decethex is SafeMath, Ownable {
     // first or this contract will not be able to do the transfer.
     require(_token != 0);
     if (!Token(_token).transferFrom(msg.sender, this, _amount)) {
-      throw;
+      revert();
     }
     tokens[_token][msg.sender] = safeAdd(tokens[_token][msg.sender], _amount);
     Deposit(_token, msg.sender, _amount, tokens[_token][msg.sender]);
@@ -196,7 +196,7 @@ contract Decethex is SafeMath, Ownable {
     require(tokens[_token][msg.sender] >= _amount);
     tokens[_token][msg.sender] = safeSub(tokens[_token][msg.sender], _amount);
     if (!Token(_token).transfer(msg.sender, _amount)) {
-      throw;
+      revert();
     }
     Withdraw(_token, msg.sender, _amount, tokens[_token][msg.sender]);
   }
@@ -219,7 +219,7 @@ contract Decethex is SafeMath, Ownable {
 		if (ecrecover(sha3("\x19Ethereum Signed Message:\n32", hash), _v, _r, _s) != _user ||
       block.number > _expires ||
       safeAdd(orderFills[_user][hash], _amount) > _amountGet) {
-      throw;
+      revert();
     }
     tradeBalances(_tokenGet, _amountGet, _tokenGive, _amountGive, _user, msg.sender, _amount);
     orderFills[_user][hash] = safeAdd(orderFills[_user][hash], _amount);
@@ -290,7 +290,7 @@ contract Decethex is SafeMath, Ownable {
       uint _nonce, uint8 _v, bytes32 _r, bytes32 _s) {
     bytes32 hash = sha256(this, _tokenGet, _amountGet, _tokenGive, _amountGive, _expires, _nonce);
     if (!(ecrecover(sha3("\x19Ethereum Signed Message:\n32", hash), _v, _r, _s) == msg.sender)) {
-      throw;
+      revert();
     }
     orderFills[msg.sender][hash] = _amountGet;
     Cancel(_tokenGet, _amountGet, _tokenGive, _amountGive, _expires, _nonce, msg.sender, _v, _r, _s);
@@ -311,7 +311,7 @@ contract Decethex is SafeMath, Ownable {
     for (uint16 n = 0; n < 20; n++) {  // We will look past 20 contracts in the future
       address nextSuccessor = newExchange.successor();
       if (nextSuccessor == address(this)) {  // Circular succession
-        throw;
+        revert();
       }
       if (nextSuccessor == address(0)) { // We reached the newest, stop
         break;
@@ -335,7 +335,7 @@ contract Decethex is SafeMath, Ownable {
         continue;
       }
       if (!Token(token).approve(newExchange, tokenAmount)) {
-        throw;
+        revert();
       }
       tokens[token][msg.sender] = 0;
       newExchange.depositTokenForUser(token, tokenAmount, msg.sender);
@@ -364,7 +364,7 @@ contract Decethex is SafeMath, Ownable {
     Decethex caller = Decethex(msg.sender);
     require(caller.version() > 0); // Make sure it's an exchange account
     if (!Token(_token).transferFrom(msg.sender, this, _amount)) {
-      throw;
+      revert();
     }
     tokens[_token][_user] = safeAdd(tokens[_token][_user], _amount);
   }
