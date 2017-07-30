@@ -1,4 +1,4 @@
-var Decethex = artifacts.require("./Decethex.sol");
+var TokenStore = artifacts.require("./TokenStore.sol");
 var AccountModifiers = artifacts.require("./AccountModifiers.sol");
 var Token = artifacts.require("./Token.sol");
 
@@ -7,7 +7,7 @@ var util = require('./util.js');
 var async = require('async');
 var config = require('../truffle.js');
 
-contract('Decethex', function(accounts) {
+contract('TokenStore', function(accounts) {
 
   var unlockedAccounts = 5;
   var accs = accounts.slice(0, unlockedAccounts - 1); // Last account is used for fees only
@@ -81,7 +81,7 @@ contract('Decethex', function(accounts) {
   function initialConfiguration() {
     var token1, token2;
     var dec;
-    return Decethex.new(fee, 0, {from: accounts[feeAccount]}).then(function(instance) {
+    return TokenStore.new(fee, 0, {from: accounts[feeAccount]}).then(function(instance) {
       dec = instance;
       return createAndDistributeToken("TT1");
     }).then(function(instance) {
@@ -417,7 +417,7 @@ contract('Decethex', function(accounts) {
       dec = result.dec;
       token1 = result.token1;
       token2 = result.token2;
-      return Decethex.new(fee, dec.address, {from: accounts[feeAccount]});
+      return TokenStore.new(fee, dec.address, {from: accounts[feeAccount]});
       
     }).then(function(result) {
     
@@ -427,7 +427,7 @@ contract('Decethex', function(accounts) {
       
     }).then(function(result) {
     
-      return Decethex.new(fee, tempIntermediaryDec.address, {from: accounts[feeAccount]});
+      return TokenStore.new(fee, tempIntermediaryDec.address, {from: accounts[feeAccount]});
       
     }).then(function(result) {
     

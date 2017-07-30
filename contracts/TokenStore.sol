@@ -72,7 +72,7 @@ contract TradeTrackerInterface {
 
 // Exchange contract
 
-contract Decethex is SafeMath, Ownable {
+contract TokenStore is SafeMath, Ownable {
 
   // The account that will receive fees
   address feeAccount;
@@ -107,13 +107,13 @@ contract Decethex is SafeMath, Ownable {
   event Withdraw(address token, address user, uint amount, uint balance);
   event FundsMigrated(address user);
 
-  function Decethex(uint _fee, address _predecessor) {
+  function TokenStore(uint _fee, address _predecessor) {
     feeAccount = owner;
     fee = _fee;
     predecessor = _predecessor;
     deprecated = false;
     if (predecessor != address(0)) {
-      version = Decethex(predecessor).version() + 1;
+      version = TokenStore(predecessor).version() + 1;
     } else {
       version = 1;
     }
@@ -307,7 +307,7 @@ contract Decethex is SafeMath, Ownable {
   
     // Get the latest successor in the chain
     require(successor != address(0));
-    Decethex newExchange = Decethex(successor);
+    TokenStore newExchange = TokenStore(successor);
     for (uint16 n = 0; n < 20; n++) {  // We will look past 20 contracts in the future
       address nextSuccessor = newExchange.successor();
       if (nextSuccessor == address(this)) {  // Circular succession
@@ -316,7 +316,7 @@ contract Decethex is SafeMath, Ownable {
       if (nextSuccessor == address(0)) { // We reached the newest, stop
         break;
       }
-      newExchange = Decethex(nextSuccessor);
+      newExchange = TokenStore(nextSuccessor);
     }
 
     // Ether
@@ -352,7 +352,7 @@ contract Decethex is SafeMath, Ownable {
   function depositForUser(address _user) payable deprecable {
     require(_user != address(0));
     require(msg.value > 0);
-    Decethex caller = Decethex(msg.sender);
+    TokenStore caller = TokenStore(msg.sender);
     require(caller.version() > 0); // Make sure it's an exchange account
     tokens[0][_user] = safeAdd(tokens[0][_user], msg.value);
   }
@@ -361,7 +361,7 @@ contract Decethex is SafeMath, Ownable {
     require(_token != address(0));
     require(_user != address(0));
     require(_amount > 0);
-    Decethex caller = Decethex(msg.sender);
+    TokenStore caller = TokenStore(msg.sender);
     require(caller.version() > 0); // Make sure it's an exchange account
     if (!Token(_token).transferFrom(msg.sender, this, _amount)) {
       revert();
