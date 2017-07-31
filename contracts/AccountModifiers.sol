@@ -21,19 +21,35 @@ contract Ownable {
 
 contract AccountModifiers is Ownable {
 
-  mapping (address => uint) public takerFeeDiscounts;   // in % of taker fee (Eg: 100 for 100%)
-  mapping (address => uint) public rebatePercentages;  // in % of taker fee charged
+  uint defaultTakerFeeDiscount;
+  uint defaultRebatePercentage;
+  
+  mapping (address => uint) takerFeeDiscounts;   // in % of taker fee (Eg: 100 for 100%)
+  mapping (address => uint) rebatePercentages;   // in % of taker fee charged
+  
+  function setDefaults(uint _defaultTakerFeeDiscount, uint _defaultRebatePercentage) onlyOwner {
+    defaultTakerFeeDiscount = _defaultTakerFeeDiscount;
+    defaultRebatePercentage = _defaultRebatePercentage;
+  }
 
   function setModifiers(address _user, uint _takeFeeDiscount, uint _rebatePercentage) onlyOwner {
     takerFeeDiscounts[_user] = _takeFeeDiscount;
     rebatePercentages[_user] = _rebatePercentage;
   }
 
-  function accountModifiers(address _user) constant returns(uint takeFeeDiscount, uint rebatePercentage) {
-    return (takerFeeDiscounts[_user], rebatePercentages[_user]);
+  function takerFeeDiscount(address _user) internal constant returns (uint) {
+    return defaultTakerFeeDiscount > takerFeeDiscounts[_user] ? defaultTakerFeeDiscount : takerFeeDiscounts[_user];
   }
-  
-  function tradeModifiers(address _maker, address _taker) constant returns(uint takeFeeDiscount, uint rebatePercentage) {
-    return (takerFeeDiscounts[_taker], rebatePercentages[_maker]);
+
+  function rebatePercentage(address _user) internal constant returns (uint) {
+    return defaultRebatePercentage > rebatePercentages[_user] ? defaultRebatePercentage : rebatePercentages[_user];
+  }
+
+  function accountModifiers(address _user) constant returns(uint, uint) {
+    return (takerFeeDiscount(_user), rebatePercentage(_user));
+  }
+
+  function tradeModifiers(address _maker, address _taker) constant returns(uint, uint) {
+    return (takerFeeDiscount(_taker), rebatePercentage(_maker));
   }
 }
