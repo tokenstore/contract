@@ -1,4 +1,4 @@
-pragma solidity ^0.4.11;
+pragma solidity ^0.4.13;
 
 // ERC20 token protocol, see more details at
 // https://theethereum.wiki/w/index.php/ERC20_Token_Standard
