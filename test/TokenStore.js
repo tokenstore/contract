@@ -1,6 +1,6 @@
 var TokenStore = artifacts.require("./TokenStore.sol");
 var AccountModifiers = artifacts.require("./AccountModifiers.sol");
-var Token = artifacts.require("./Token.sol");
+var Token = artifacts.require("./TokenTemplate.sol");
 
 var sha256 = require('js-sha256').sha256;
 var util = require('./util.js');
