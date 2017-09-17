@@ -3,7 +3,7 @@
 ## Contracts
 1. TokenStore.sol - key exchange contract with helpers
 2. AccountModifiers.sol - a simple contract to hold fee/rebate modifiers
-3. Token.sol - a sample ERC20 token contract to be used in testing only
+3. TokenTemplate.sol - a sample ERC20 token contract to be used in testing only
 
 ## Testing
 1. Install [truffle](http://truffleframework.com/) 3.4.6
