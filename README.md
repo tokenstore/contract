@@ -1,7 +1,7 @@
-# Decethex contracts and test suite
+# TokenStore contracts and test suite
 
 ## Contracts
-1. Decethex.sol - key exchange contract with helpers
+1. TokenStore.sol - key exchange contract with helpers
 2. AccountModifiers.sol - a simple contract to hold fee/rebate modifiers
 3. Token.sol - a sample ERC20 token contract to be used in testing only
 
@@ -12,4 +12,4 @@
 3. Launch `truffle test` from command line
 
 ## Contact
-TBD
+Email us at tokendotstore@gmail.com with any questions and feedback!
