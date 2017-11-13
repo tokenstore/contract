@@ -5,6 +5,14 @@
 2. AccountModifiers.sol - a simple contract to hold fee/rebate modifiers
 3. TokenTemplate.sol - a sample ERC20 token contract to be used in testing only
 
+## Install
+```
+cd contract
+npm install
+truffle compile
+truffle deploy
+```
+
 ## Testing
 1. Install [truffle](http://truffleframework.com/) 3.4.6
 2. Install [testrpc](https://github.com/ethereumjs/testrpc) 3.9.2
