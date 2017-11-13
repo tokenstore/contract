@@ -1,1 +1,0 @@
-Since git doesn't create empty folders and Truffle needs migrations, we put this file here.
