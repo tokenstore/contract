@@ -1,6 +1,6 @@
 pragma solidity ^0.4.11;
 
-contract tokenRecipient { function receiveApproval(address _from, uint256 _value, address _token, bytes _extraData); }
+import "./TokenRecipient.sol";
 
 contract TokenTemplate {
     /* Public variables of the token */
@@ -54,7 +54,7 @@ contract TokenTemplate {
     /* Approve and then communicate the approved contract in a single tx */
     function approveAndCall(address _spender, uint256 _value, bytes _extraData)
         returns (bool success) {
-        tokenRecipient spender = tokenRecipient(_spender);
+        TokenRecipient spender = TokenRecipient(_spender);
         if (approve(_spender, _value)) {
             spender.receiveApproval(msg.sender, _value, this, _extraData);
             return true;

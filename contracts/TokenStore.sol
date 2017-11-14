@@ -1,74 +1,14 @@
 pragma solidity ^0.4.13;
 
+import "./Ownable.sol";
+import "./Token.sol";
+import "./SafeMath.sol";
+import "./AccountModifiersInterface.sol";
+import "./TradeTrackerInterface.sol";
+
 // ERC20 token protocol, see more details at
 // https://theethereum.wiki/w/index.php/ERC20_Token_Standard
 // And also https://github.com/ethereum/eips/issues/20
-
-contract Token {
-  function totalSupply() constant returns (uint256 supply);
-  function balanceOf(address _owner) constant returns (uint256 balance);
-  function transfer(address _to, uint256 _value) returns (bool success);
-  function transferFrom(address _from, address _to, uint256 _value) returns (bool success);
-  function approve(address _spender, uint256 _value) returns (bool success);
-  function allowance(address _owner, address _spender) constant returns (uint256 remaining);
-
-  event Transfer(address indexed _from, address indexed _to, uint256 _value);
-  event Approval(address indexed _owner, address indexed _spender, uint256 _value);
-}
-
-// Safe mathematics to make the code more readable
-
-contract SafeMath {
-  function safeMul(uint a, uint b) internal returns (uint) {
-    uint c = a * b;
-    assert(a == 0 || c / a == b);
-    return c;
-  }
-
-  function safeSub(uint a, uint b) internal returns (uint) {
-    assert(b <= a);
-    return a - b;
-  }
-
-  function safeAdd(uint a, uint b) internal returns (uint) {
-    uint c = a + b;
-    assert(c>=a && c>=b);
-    return c;
-  }
-}
-
-// Ownable interface to simplify owner checks
-
-contract Ownable {
-  address public owner;
-
-  function Ownable() {
-    owner = msg.sender;
-  }
-
-  modifier onlyOwner() {
-    require(msg.sender == owner);
-    _;
-  }
-
-  function transferOwnership(address _newOwner) onlyOwner {
-    require(_newOwner != address(0));
-    owner = _newOwner;
-  }
-}
-
-// Interface for trading discounts and rebates for specific accounts
-
-contract AccountModifiersInterface {
-  function accountModifiers(address _user) constant returns(uint takeFeeDiscount, uint rebatePercentage);
-  function tradeModifiers(address _maker, address _taker) constant returns(uint takeFeeDiscount, uint rebatePercentage);
-}
-
-// Interface for trade tacker
-
-contract TradeTrackerInterface {
-  function tradeComplete(address _tokenGet, uint _amountGet, address _tokenGive, uint _amountGive, address _get, address _give, uint _takerFee, uint _makerRebate);
-}
 
 // Exchange contract
 
@@ -79,7 +19,7 @@ contract TokenStore is SafeMath, Ownable {
 
   // The account that stores fee discounts/rebates
   address accountModifiers;
-  
+
   // Trade tracker account
   address tradeTracker;
 
@@ -91,7 +31,7 @@ contract TokenStore is SafeMath, Ownable {
 
   // Mapping of user accounts to mapping of order hashes to uints (amount of order that has been filled)
   mapping (address => mapping (bytes32 => uint)) public orderFills;
-  
+
   // Address of a next and previous versions of the contract, also status of the contract
   // can be used for user-triggered fund migrations
   address public successor;
@@ -123,7 +63,7 @@ contract TokenStore is SafeMath, Ownable {
   function() {
     revert();
   }
-  
+
   modifier deprecable() {
     require(!deprecated);
     _;
@@ -142,7 +82,7 @@ contract TokenStore is SafeMath, Ownable {
   function changeAccountModifiers(address _accountModifiers) onlyOwner {
     accountModifiers = _accountModifiers;
   }
-  
+
   function changeTradeTracker(address _tradeTracker) onlyOwner {
     tradeTracker = _tradeTracker;
   }
@@ -152,7 +92,7 @@ contract TokenStore is SafeMath, Ownable {
     require(_fee <= fee);
     fee = _fee;
   }
-  
+
   // Allows a user to get her current discount/rebate
   function getAccountModifiers() constant returns(uint takeFeeDiscount, uint rebatePercentage) {
     if (accountModifiers != address(0)) {
@@ -161,7 +101,7 @@ contract TokenStore is SafeMath, Ownable {
       return (0, 0);
     }
   }
-  
+
   ////////////////////////////////////////////////////////////////////////////////
   // Deposits, withdrawals, balances
   ////////////////////////////////////////////////////////////////////////////////
@@ -204,7 +144,7 @@ contract TokenStore is SafeMath, Ownable {
   function balanceOf(address _token, address _user) constant returns (uint) {
     return tokens[_token][_user];
   }
-  
+
   ////////////////////////////////////////////////////////////////////////////////
   // Trading
   ////////////////////////////////////////////////////////////////////////////////
@@ -225,7 +165,7 @@ contract TokenStore is SafeMath, Ownable {
     orderFills[_user][hash] = safeAdd(orderFills[_user][hash], _amount);
     Trade(_tokenGet, _amount, _tokenGive, _amountGive * _amount / _amountGet, _user, msg.sender, _nonce);
   }
-  
+
   function tradeBalances(address _tokenGet, uint _amountGet, address _tokenGive, uint _amountGive,
       address _user, address _caller, uint _amount) private {
 
@@ -246,13 +186,13 @@ contract TokenStore is SafeMath, Ownable {
       feeTakeValue = safeMul(feeTakeValue, 100 - feeTakeDiscount) / 100;  // discounted fee
       rebateValue = safeMul(rebatePercentage, feeTakeValue) / 100;        // % of actual taker fee
     }
-    
+
     tokens[_tokenGet][_user] = safeAdd(tokens[_tokenGet][_user], safeAdd(_amount, rebateValue));
     tokens[_tokenGet][_caller] = safeSub(tokens[_tokenGet][_caller], safeAdd(_amount, feeTakeValue));
     tokens[_tokenGive][_user] = safeSub(tokens[_tokenGive][_user], tokenGiveValue);
     tokens[_tokenGive][_caller] = safeAdd(tokens[_tokenGive][_caller], tokenGiveValue);
     tokens[_tokenGet][feeAccount] = safeAdd(tokens[_tokenGet][feeAccount], safeSub(feeTakeValue, rebateValue));
-    
+
     if (tradeTracker != address(0)) {
       TradeTrackerInterface(tradeTracker).tradeComplete(_tokenGet, _amount, _tokenGive, tokenGiveValue, _user, _caller, feeTakeValue, rebateValue);
     }
@@ -295,7 +235,7 @@ contract TokenStore is SafeMath, Ownable {
     orderFills[msg.sender][hash] = _amountGet;
     Cancel(_tokenGet, _amountGet, _tokenGive, _amountGive, _expires, _nonce, msg.sender, _v, _r, _s);
   }
-  
+
   ////////////////////////////////////////////////////////////////////////////////
   // Migrations
   ////////////////////////////////////////////////////////////////////////////////
@@ -304,7 +244,7 @@ contract TokenStore is SafeMath, Ownable {
   // Similar to withdraw but we use a successor account instead
   // As we don't store user tokens list on chain, it has to be passed from the outside
   function migrateFunds(address[] _tokens) {
-  
+
     // Get the latest successor in the chain
     require(successor != address(0));
     TokenStore newExchange = TokenStore(successor);

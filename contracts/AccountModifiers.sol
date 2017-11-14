@@ -1,32 +1,15 @@
 pragma solidity ^0.4.13;
 
-contract Ownable {
-  address public owner;
-
-  function Ownable() {
-    owner = msg.sender;
-  }
-
-  modifier onlyOwner() {
-    require(msg.sender == owner);
-    _;
-  }
-
-  function transferOwnership(address newOwner) onlyOwner {
-    if (newOwner != address(0)) {
-      owner = newOwner;
-    }
-  }
-}
+import "./Ownable.sol";
 
 contract AccountModifiers is Ownable {
 
   uint defaultTakerFeeDiscount;
   uint defaultRebatePercentage;
-  
+
   mapping (address => uint) takerFeeDiscounts;   // in % of taker fee (Eg: 100 for 100%)
   mapping (address => uint) rebatePercentages;   // in % of taker fee charged
-  
+
   function setDefaults(uint _defaultTakerFeeDiscount, uint _defaultRebatePercentage) onlyOwner {
     defaultTakerFeeDiscount = _defaultTakerFeeDiscount;
     defaultRebatePercentage = _defaultRebatePercentage;
