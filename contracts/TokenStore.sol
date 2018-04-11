@@ -5,6 +5,11 @@ pragma solidity ^0.4.13;
 // And also https://github.com/ethereum/eips/issues/20
 
 contract Token {
+
+  string public name;
+  string public symbol;
+  uint8 public decimals;
+
   function totalSupply() constant returns (uint256 supply);
   function balanceOf(address _owner) constant returns (uint256 balance);
   function transfer(address _to, uint256 _value) returns (bool success);
