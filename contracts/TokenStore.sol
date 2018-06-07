@@ -69,7 +69,7 @@ contract AccountModifiersInterface {
   function tradeModifiers(address _maker, address _taker) constant returns(uint takeFeeDiscount, uint rebatePercentage);
 }
 
-// Interface for trade tacker
+// Interface for trade tracker
 
 contract TradeTrackerInterface {
   function tradeComplete(address _tokenGet, uint _amountGet, address _tokenGive, uint _amountGive, address _get, address _give, uint _takerFee, uint _makerRebate);
