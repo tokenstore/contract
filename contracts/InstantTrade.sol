@@ -5,12 +5,12 @@ import "./TokenStore.sol";
 contract InstantTrade is SafeMath, Ownable {
 
   // This is needed so we can withdraw funds from other smart contracts
-  function() payable {
+  function() public payable {
   }
   
   // End to end trading in a single call
   function instantTrade(address _tokenGet, uint _amountGet, address _tokenGive, uint _amountGive,
-      uint _expires, uint _nonce, address _user, uint8 _v, bytes32 _r, bytes32 _s, uint _amount, address _store) payable {
+      uint _expires, uint _nonce, address _user, uint8 _v, bytes32 _r, bytes32 _s, uint _amount, address _store) external payable {
     
     // Fix max fee (0.4%) and always reserve it
     uint totalValue = safeMul(_amount, 1004) / 1000;
@@ -47,11 +47,11 @@ contract InstantTrade is SafeMath, Ownable {
     }
   }
   
-  function withdrawFees(address _token) onlyOwner {
+  function withdrawFees(address _token) external onlyOwner {
     if (_token == address(0)) {
-      msg.sender.transfer(this.balance);
+      msg.sender.transfer(address(this).balance);
     } else {
-      uint amount = Token(_token).balanceOf(this);
+      uint amount = Token(_token).balanceOf(address(this));
       require(Token(_token).transfer(msg.sender, amount));
     }
   }  
