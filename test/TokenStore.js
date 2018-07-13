@@ -5,7 +5,7 @@ var Token = artifacts.require("./TokenTemplate.sol");
 var sha256 = require('js-sha256').sha256;
 var util = require('./util.js');
 var async = require('async');
-var config = require('../truffle.js');
+var config = require('../truffle-config.js');
 
 contract('TokenStore', function(accounts) {
 

@@ -4,6 +4,6 @@ var TokenStore = artifacts.require("./TokenStore.sol");
 
 module.exports = function(deployer) {
   deployer.deploy(AccountModifiers);
-  deployer.deploy(TokenTemplate);
-  deployer.deploy(TokenStore);
+  deployer.deploy(TokenTemplate, web3.toBigNumber(1000000000000000000000000), "Token", 18, "Token");
+  deployer.deploy(TokenStore, web3.toBigNumber(3000000000000000), "0x0000000000000000000000000000000000000000");
 };
