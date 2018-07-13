@@ -18,19 +18,14 @@ contract InstantTrade is SafeMath, Ownable {
     // Paying with Ethereum or token? Deposit to the actual store
     if (_tokenGet == address(0)) {
       // Check amount of ether sent to make sure it's correct
-      if (msg.value != totalValue) {
-        revert();
-      }
+      require(msg.value == totalValue);
       TokenStore(_store).deposit.value(totalValue)();
     } else {
       // Assuming user already approved transfer, transfer first to this contract
-      if (!Token(_tokenGet).transferFrom(msg.sender, this, totalValue)) {
-        revert();
-      }
+      require(Token(_tokenGet).transferFrom(msg.sender, this, totalValue));
+
       // Allow now actual store to deposit
-      if (!Token(_tokenGet).approve(_store, totalValue)) {
-        revert();
-      }
+      require(!Token(_tokenGet).approve(_store, totalValue)); 
       TokenStore(_store).depositToken(_tokenGet, totalValue);
     }
     
@@ -48,9 +43,7 @@ contract InstantTrade is SafeMath, Ownable {
       msg.sender.transfer(customerValue);
     } else {
       TokenStore(_store).withdrawToken(_tokenGive, totalValue);
-      if (!Token(_tokenGive).transfer(msg.sender, customerValue)) {
-        revert();
-      }
+      require(Token(_tokenGive).transfer(msg.sender, customerValue));
     }
   }
   
@@ -59,9 +52,7 @@ contract InstantTrade is SafeMath, Ownable {
       msg.sender.transfer(this.balance);
     } else {
       uint amount = Token(_token).balanceOf(this);
-      if (!Token(_token).transfer(msg.sender, amount)) {
-        revert();
-      }
+      require(Token(_token).transfer(msg.sender, amount));
     }
   }  
 }
