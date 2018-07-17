@@ -30,8 +30,19 @@ contract InstantTrade is SafeMath, Ownable {
     }
     
     // Trade
+    /*
     TokenStore(_store).trade(_tokenGet, _amountGet, _tokenGive, _amountGive,
       _expires, _nonce, _user, _v, _r, _s, _amount);
+    */
+
+    // Wrap trade function in a call to avoid a 'throw;' using up all gas.
+    require(
+        address(_store).call(
+          bytes4(keccak256("trade(address,uint256,address,uint256,uint256,uint256,address,uint8,bytes32,bytes32,uint256)")),
+          _tokenGet, _amountGet, _tokenGive, _amountGive,_expires, _nonce, _user, _v, _r, _s, _amount
+        )
+    );
+
     
     // Check how much did we get and how much should we send back
     totalValue = TokenStore(_store).balanceOf(_tokenGive, this);
