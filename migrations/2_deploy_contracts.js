@@ -1,5 +1,5 @@
 var AccountModifiers = artifacts.require("./AccountModifiers.sol");
-var TokenTemplate = artifacts.require("./TokenTemplate.sol");
+var TokenTemplate = artifacts.require("./InstantTradeContracts/EIP20.sol");
 var TokenStore = artifacts.require("./TokenStore.sol");
 
 module.exports = function(deployer) {
