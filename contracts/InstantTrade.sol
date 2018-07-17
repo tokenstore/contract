@@ -25,7 +25,7 @@ contract InstantTrade is SafeMath, Ownable {
       require(Token(_tokenGet).transferFrom(msg.sender, this, totalValue));
 
       // Allow now actual store to deposit
-      require(!Token(_tokenGet).approve(_store, totalValue)); 
+      require(Token(_tokenGet).approve(_store, totalValue)); 
       TokenStore(_store).depositToken(_tokenGet, totalValue);
     }
     
