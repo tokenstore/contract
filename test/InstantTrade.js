@@ -31,7 +31,7 @@ contract("InstantTrade", function (accounts) {
     /* Deployed in migrations by accounts[0] */
     tokenStore = await TokenStore.deployed();
     token = await Token.deployed();
-    instantTrade = await InstantTrade.deployed();
+
 
     /* Deploy new EtherDelta instance */
     etherDelta = await EtherDelta.new(feeAccount, feeAccount, zeroAddress, 0, fee, 0, { from: feeAccount });
@@ -40,11 +40,13 @@ contract("InstantTrade", function (accounts) {
     zrxToken = await ZRXToken.new({ from: feeAccount });
     zeroProxy = await ZeroProxy.new({ from: feeAccount });
     zeroX = await ZeroX.new(zrxToken.address, zeroProxy.address, { from: feeAccount });
+    instantTrade = await InstantTrade.new(wETH.address, zeroX.address, { from: feeAccount });
 
     await zeroProxy.addAuthorizedAddress(zeroX.address, { from: feeAccount });
 
+
     /* Give accounts 1 to 4 some tokens, make them deposit both tokens and ether */
-    for (let i = 1; i < 5; i++) {
+    for (let i = 1; i < 9; i++) {
 
       await token.transfer(accounts[i], userToken, { from: feeAccount });
 
@@ -72,9 +74,30 @@ contract("InstantTrade", function (accounts) {
     let sig = util.fromRpcSig(sigResult);
     sig.r = `0x${sig.r.toString('hex')}`
     sig.s = `0x${sig.s.toString('hex')}`
+    sig.hash = hash;
     return sig;
 
 
+  }
+
+  function sign0xOrder(exchangeAddress, orderAddresses, orderValues, hash) {
+
+    let values = [exchangeAddress, orderAddresses[0], orderAddresses[1], orderAddresses[2], orderAddresses[3], orderAddresses[4],
+      orderValues[0], orderValues[1], orderValues[2], orderValues[3], orderValues[4], orderValues[5]
+    ];
+    let types = ["address", "address", "address", "address", "address", "address",
+      "uint256", "uint256", "uint256", "uint256", "uint256", "uint256"
+    ];
+
+    //hash = `0x${util_abi.soliditySHA256(types, values).toString('hex')}`;
+
+    let sigResult = web3.eth.sign(orderAddresses[0], hash);
+
+    let sig = util.fromRpcSig(sigResult);
+    sig.r = `0x${sig.r.toString('hex')}`
+    sig.s = `0x${sig.s.toString('hex')}`
+    sig.hash = hash;
+    return sig;
   }
 
   it("Sell tokens EtherDelta", async function () {
@@ -142,6 +165,110 @@ contract("InstantTrade", function (accounts) {
     assert.equal(String(await web3.eth.getBalance(taker)), String(etherBalance.minus(amountFee).minus(gas)), "Ether balance normal");
     assert.equal(String(await token.balanceOf(taker)), String(tokenBalance.plus(amountGive)), "Token balance normal");
 
+  });
+
+
+
+  it('Buy tokens 0x', async function () {
+
+    let taker = accounts[6];
+    let maker = accounts[5];
+
+    let orderAddresses = [
+      maker, // maker
+      zeroAddress, // taker
+      token.address, // makerToken
+      wETH.address, // takerToken
+      zeroAddress, // feeRecipient
+    ];
+    let orderValues = [
+      depositedToken / 4, // makerTokenAmount
+      depositedEther / 4,// takerTokenAmount
+      0, // maker fee
+      0, // taker fee
+      2524636800, // expiration timestamp in seconds
+      3, // salt
+    ];
+
+    await token.approve(zeroProxy.address, orderValues[0], { from: maker });
+
+    let hash = await zeroX.getOrderHash(orderAddresses, orderValues);
+    let order = sign0xOrder(zeroX.address, orderAddresses, orderValues, hash);
+
+    /* check if the order is valid in the contract */
+    assert.equal(hash, order.hash, 'hashes are equal');
+    let valid = await zeroX.isValidSignature(maker, hash, order.v, order.r, order.s);
+    assert(valid, 'order is valid');
+    let filled = await zeroX.getUnavailableTakerTokenAmount(hash);
+    assert.equal(String(filled), "0", "Order is available");
+
+
+    let etherBalance = await web3.eth.getBalance(taker);
+    let tokenBalance = await token.balanceOf(taker);
+
+    let allowedMaker = await token.allowance(maker, zeroProxy.address);
+    assert.equal(String(allowedMaker), String(orderValues[0]), 'maker allowance');
+
+    let amountFee = (orderValues[1] * 1.004); //add 0.4%
+
+    let trade = await instantTrade.instantTrade0x(orderAddresses, orderValues, order.v, order.r, order.s, orderValues[1], { from: taker, value: amountFee });
+    let gas = trade.receipt.gasUsed * gasPrice;
+
+    assert.equal(String(await web3.eth.getBalance(taker)), String(etherBalance.minus(amountFee).minus(gas)), "Ether balance normal");
+    assert.equal(String(await token.balanceOf(taker)), String(tokenBalance.plus(orderValues[0])), "Token balance normal");
+  });
+
+  it('Sell tokens 0x', async function () {
+    let taker = accounts[8];
+    let maker = accounts[7];
+
+    let orderAddresses = [
+      maker, // maker
+      zeroAddress, // taker
+      wETH.address, // makerToken
+      token.address, // takerToken
+      zeroAddress, // feeRecipient
+    ];
+    let orderValues = [
+      depositedEther / 4, // makerTokenAmount
+      depositedToken / 4,// takerTokenAmount
+      0, // maker fee
+      0, // taker fee
+      2524636800, // expiration timestamp in seconds
+      4, // salt
+    ];
+
+    await wETH.deposit({ from: maker, value: orderValues[0] });
+    await wETH.approve(zeroProxy.address, orderValues[0], { from: maker });
+
+
+    let hash = await zeroX.getOrderHash(orderAddresses, orderValues);
+    let order = sign0xOrder(zeroX.address, orderAddresses, orderValues, hash);
+
+    /* check if the order is valid in the contract */
+    assert.equal(hash, order.hash, 'hashes are equal');
+    let valid = await zeroX.isValidSignature(maker, hash, order.v, order.r, order.s);
+    assert(valid, 'order is valid');
+    let filled = await zeroX.getUnavailableTakerTokenAmount(hash);
+    assert.equal(String(filled), "0", "Order is available");
+
+
+    let amountFee = (orderValues[1] * 1.004); //add 0.4%
+    await token.approve(instantTrade.address, amountFee, { from: taker });
+
+    let etherBalance = await web3.eth.getBalance(taker);
+    let tokenBalance = await token.balanceOf(taker);
+
+    let allowedMaker = await wETH.allowance(maker, zeroProxy.address);
+    assert.equal(String(allowedMaker), String(orderValues[0]), 'maker allowance');
+    let allowedTaker = await token.allowance(taker, instantTrade.address);
+    assert.equal(String(allowedTaker), String(amountFee), 'taker allowance');
+
+    let trade = await instantTrade.instantTrade0x(orderAddresses, orderValues, order.v, order.r, order.s, orderValues[1], { from: taker });
+    let gas = trade.receipt.gasUsed * gasPrice;
+
+    assert.equal(String(await web3.eth.getBalance(taker)), String(etherBalance.plus(orderValues[0]).minus(gas)), "Ether balance normal");
+    assert.equal(String(await token.balanceOf(taker)), String(tokenBalance.minus(amountFee)), "Token balance normal");
   });
 
 }); 
