@@ -1,8 +1,12 @@
 var TokenStore = artifacts.require("./TokenStore.sol");
-var AccountModifiers = artifacts.require("./AccountModifiers.sol");
+//var AccountModifiers = artifacts.require("./AccountModifiers.sol");
 var InstantTrade = artifacts.require("./InstantTrade.sol");
 var Token = artifacts.require("./InstantTradeContracts/EIP20.sol");
 var EtherDelta = artifacts.require("./InstantTradeContracts/EtherDelta.sol");
+var WETH = artifacts.require("./InstantTradeContracts/0x/WETH9.sol");
+var ZeroX = artifacts.require("./InstantTradeContracts/0x/Exchange.sol");
+var ZeroProxy = artifacts.require("./InstantTradeContracts/0x/TokenTransferProxy.sol");
+var ZRXToken = artifacts.require("./InstantTradeContracts/0x/ZRXToken.sol");
 
 var util_abi = require('ethereumjs-abi');
 var util = require('ethereumjs-util');
@@ -21,16 +25,23 @@ contract("InstantTrade", function (accounts) {
   const defaultExpirationInBlocks = 100;
   const gasPrice = config.networks.development.gasPrice;
 
-  var tokenStore, proxy, token, etherDelta;
+  var tokenStore, instantTrade, token, etherDelta, wETH, zeroX, zeroProxy, zrxToken;
 
   before(async function () {
     /* Deployed in migrations by accounts[0] */
     tokenStore = await TokenStore.deployed();
     token = await Token.deployed();
-    proxy = await InstantTrade.deployed();
+    instantTrade = await InstantTrade.deployed();
 
     /* Deploy new EtherDelta instance */
     etherDelta = await EtherDelta.new(feeAccount, feeAccount, zeroAddress, 0, fee, 0, { from: feeAccount });
+    /* Deploy 0x contracts */
+    wETH = await WETH.new({ from: feeAccount });
+    zrxToken = await ZRXToken.new({ from: feeAccount });
+    zeroProxy = await ZeroProxy.new({ from: feeAccount });
+    zeroX = await ZeroX.new(zrxToken.address, zeroProxy.address, { from: feeAccount });
+
+    await zeroProxy.addAuthorizedAddress(zeroX.address, { from: feeAccount });
 
     /* Give accounts 1 to 4 some tokens, make them deposit both tokens and ether */
     for (let i = 1; i < 5; i++) {
@@ -66,7 +77,7 @@ contract("InstantTrade", function (accounts) {
 
   }
 
-  it("InstantTrade sell tokens", async function () {
+  it("Sell tokens EtherDelta", async function () {
 
     let exchangeAddress = etherDelta.address;
     let tokenGet = token.address;
@@ -87,12 +98,12 @@ contract("InstantTrade", function (accounts) {
 
     let amountFee = (amountGet * 1.004); //add 0.4%
 
-    await token.approve(proxy.address, amountFee, { from: taker });
+    await token.approve(instantTrade.address, amountFee, { from: taker });
 
     let etherBalance = await web3.eth.getBalance(taker);
     let tokenBalance = await token.balanceOf(taker);
 
-    let trade = await proxy.instantTrade(tokenGet, amountGet, tokenGive, amountGive, expires, nonce, maker, order.v, order.r, order.s, amountGet, exchangeAddress, { from: taker });
+    let trade = await instantTrade.instantTrade(tokenGet, amountGet, tokenGive, amountGive, expires, nonce, maker, order.v, order.r, order.s, amountGet, exchangeAddress, { from: taker });
     let gas = trade.receipt.gasUsed * gasPrice;
 
     assert.equal(String(await web3.eth.getBalance(taker)), String(etherBalance.plus(amountGive).minus(gas)), "Ether balance normal");
@@ -101,7 +112,7 @@ contract("InstantTrade", function (accounts) {
   });
 
 
-  it("InstantTrade buy tokens", async function () {
+  it("Buy tokens EtherDelta", async function () {
 
     let exchangeAddress = etherDelta.address;
     let tokenGet = zeroAddress;
@@ -125,7 +136,7 @@ contract("InstantTrade", function (accounts) {
 
     let amountFee = (amountGet * 1.004); //add 0.4%
 
-    let trade = await proxy.instantTrade(tokenGet, amountGet, tokenGive, amountGive, expires, nonce, maker, order.v, order.r, order.s, amountGet, exchangeAddress, { from: taker, value: amountFee });
+    let trade = await instantTrade.instantTrade(tokenGet, amountGet, tokenGive, amountGive, expires, nonce, maker, order.v, order.r, order.s, amountGet, exchangeAddress, { from: taker, value: amountFee });
     let gas = trade.receipt.gasUsed * gasPrice;
 
     assert.equal(String(await web3.eth.getBalance(taker)), String(etherBalance.minus(amountFee).minus(gas)), "Ether balance normal");
