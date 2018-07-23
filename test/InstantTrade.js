@@ -24,6 +24,7 @@ contract("InstantTrade", function (accounts) {
   const depositedEther = 100000;
   const defaultExpirationInBlocks = 100;
   const gasPrice = config.networks.development.gasPrice;
+  const revertError = "VM Exception while processing transaction: revert";
 
   var tokenStore, instantTrade, token, etherDelta, wETH, zeroX, zeroProxy, zrxToken;
 
@@ -45,6 +46,14 @@ contract("InstantTrade", function (accounts) {
     await zeroProxy.addAuthorizedAddress(zeroX.address, { from: feeAccount });
     await instantTrade.allowFallback(tokenStore.address, true, { from: feeAccount });
     await instantTrade.allowFallback(etherDelta.address, true, { from: feeAccount });
+
+    // check onlyOwner modifier
+    try {
+      await instantTrade.allowFallback(etherDelta.address, true, { from: accounts[1] });
+      assert(false, "Only onwer can do this");
+    } catch (error) {
+      assert.equal(error.message, revertError);
+    }
 
 
     /* Give accounts 1 to 4 some tokens, make them deposit both tokens and ether */
@@ -135,6 +144,15 @@ contract("InstantTrade", function (accounts) {
     assert.equal(String(await web3.eth.getBalance(taker)), String(etherBalance.plus(amountGive).minus(gas)), "Ether balance normal");
     assert.equal(String(await token.balanceOf(taker)), String(tokenBalance.minus(amountFee)), "Token balance normal");
 
+
+    try {
+      //await instantTrade.instantTrade(tokenGet, amountGet, tokenGive, amountGive, expires, nonce, maker, order.v, order.r, order.s, amountGet, exchangeAddress, { from: taker });
+      await instantTrade.sellTokens(tokenGet, amountGet, tokenGive, amountGive, expires, nonce, maker, order.v, order.r, order.s, amountGet, exchangeAddress, { from: taker });
+      assert(false, "Order can't be filled twice");
+    } catch (error) {
+      assert.equal(error.message, revertError);
+    }
+
   });
 
 
@@ -168,6 +186,14 @@ contract("InstantTrade", function (accounts) {
 
     assert.equal(String(await web3.eth.getBalance(taker)), String(etherBalance.minus(amountFee).minus(gas)), "Ether balance normal");
     assert.equal(String(await token.balanceOf(taker)), String(tokenBalance.plus(amountGive)), "Token balance normal");
+
+    try {
+      //await instantTrade.instantTrade(tokenGet, amountGet, tokenGive, amountGive, expires, nonce, maker, order.v, order.r, order.s, amountGet, exchangeAddress, { from: taker, value: amountFee });
+      await instantTrade.buyTokens(tokenGet, amountGet, tokenGive, amountGive, expires, nonce, maker, order.v, order.r, order.s, amountGet, exchangeAddress, { from: taker, value: amountFee });
+      assert(false, "Order can't be filled twice");
+    } catch (error) {
+      assert.equal(error.message, revertError);
+    }
 
   });
 
@@ -221,6 +247,14 @@ contract("InstantTrade", function (accounts) {
 
     assert.equal(String(await web3.eth.getBalance(taker)), String(etherBalance.minus(amountFee).minus(gas)), "Ether balance normal");
     assert.equal(String(await token.balanceOf(taker)), String(tokenBalance.plus(orderValues[0])), "Token balance normal");
+
+    try {
+      //await instantTrade.instantTrade0x(orderAddresses, orderValues, order.v, order.r, order.s, orderValues[1], { from: taker, value: amountFee });
+      await instantTrade.buyTokens0x(orderAddresses, orderValues, order.v, order.r, order.s, orderValues[1], { from: taker, value: amountFee });
+      assert(false, "Order can't be filled twice");
+    } catch (error) {
+      assert.equal(error.message, revertError);
+    }
   });
 
   it('Sell tokens 0x', async function () {
@@ -275,6 +309,62 @@ contract("InstantTrade", function (accounts) {
 
     assert.equal(String(await web3.eth.getBalance(taker)), String(etherBalance.plus(orderValues[0]).minus(gas)), "Ether balance normal");
     assert.equal(String(await token.balanceOf(taker)), String(tokenBalance.minus(amountFee)), "Token balance normal");
+
+    try {
+      //await instantTrade.instantTrade0x(orderAddresses, orderValues, order.v, order.r, order.s, orderValues[1], { from: taker });
+      await instantTrade.sellTokens0x(orderAddresses, orderValues, order.v, order.r, order.s, orderValues[1], { from: taker });
+      assert(false, "Order can't be filled twice");
+    } catch (error) {
+      assert.equal(error.message, revertError);
+    }
+  });
+
+  it("Random ETH transfers fail", async function () {
+
+    try {
+      await web3.eth.sendTransaction({ from: accounts[1], to: instantTrade.address, value: 100 });
+      assert(false, "Fallback should reject this");
+    } catch (error) {
+      assert.equal(error.message, revertError);
+    }
+  });
+
+  it("Withdraw Token fees", async function () {
+
+    let adminBalance = await token.balanceOf(feeAccount);
+    let contractBalance = await token.balanceOf(instantTrade.address);
+
+    try {
+      await instantTrade.withdrawFees(token.address, { from: accounts[1] });
+      assert(false, "Only allow withdraw from owner");
+    } catch (error) {
+      assert.equal(error.message, revertError);
+    }
+
+    let withdraw = await instantTrade.withdrawFees(token.address, { from: feeAccount });
+    let gas = withdraw.receipt.gasUsed * gasPrice;
+
+    assert.equal(String(await token.balanceOf(feeAccount)), String(adminBalance.plus(contractBalance)), "Tokens withdrawn");
+    assert.equal(String(await token.balanceOf(instantTrade.address)), "0", "Contract is empty");
+  });
+
+  it("Withdraw ETH fees", async function () {
+
+    let adminBalance = await web3.eth.getBalance(feeAccount);
+    let contractBalance = await web3.eth.getBalance(instantTrade.address);
+
+    try {
+      await instantTrade.withdrawFees(zeroAddress, { from: accounts[1] });
+      assert(false, "Only allow withdraw from owner");
+    } catch (error) {
+      assert.equal(error.message, revertError);
+    }
+
+    let withdraw = await instantTrade.withdrawFees(zeroAddress, { from: feeAccount });
+    let gas = withdraw.receipt.gasUsed * gasPrice;
+
+    assert.equal(String(await web3.eth.getBalance(feeAccount)), String(adminBalance.plus(contractBalance).minus(gas)), "Tokens withdrawn");
+    assert.equal(String(await web3.eth.getBalance(instantTrade.address)), "0", "Contract is empty");
   });
 
 }); 
