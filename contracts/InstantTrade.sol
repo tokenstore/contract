@@ -40,14 +40,24 @@ contract InstantTrade is SafeMath, Ownable {
     address public zeroX;
     address public proxyZeroX;
     
+    mapping(address => bool) allowedFallbacks; // Limit fallback to avoid accidental ETH transfers
+    
    constructor(address _weth, address _zeroX) Ownable() public {
        wETH = _weth;
        zeroX = _zeroX;
        proxyZeroX = ZeroExchange(zeroX).TOKEN_TRANSFER_PROXY_CONTRACT();
+       
+       allowedFallbacks[wETH] = true;
    }
    
-  // This is needed so we can withdraw funds from other smart contracts
+  // Only allow incoming ETH from known contracts (Exchange and WETH withdrawals)
   function() public payable {
+      require(allowedFallbacks[msg.sender]);
+  }
+  
+  
+  function allowFallback(address _contract, bool _allowed) external onlyOwner {
+       allowedFallbacks[_contract] = _allowed;
   }
   
   function getTotalFeeValue(uint _amount) internal returns (uint) {

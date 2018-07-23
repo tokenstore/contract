@@ -43,6 +43,8 @@ contract("InstantTrade", function (accounts) {
     instantTrade = await InstantTrade.new(wETH.address, zeroX.address, { from: feeAccount });
 
     await zeroProxy.addAuthorizedAddress(zeroX.address, { from: feeAccount });
+    await instantTrade.allowFallback(tokenStore.address, true, { from: feeAccount });
+    await instantTrade.allowFallback(etherDelta.address, true, { from: feeAccount });
 
 
     /* Give accounts 1 to 4 some tokens, make them deposit both tokens and ether */
