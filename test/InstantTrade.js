@@ -128,7 +128,8 @@ contract("InstantTrade", function (accounts) {
     let etherBalance = await web3.eth.getBalance(taker);
     let tokenBalance = await token.balanceOf(taker);
 
-    let trade = await instantTrade.instantTrade(tokenGet, amountGet, tokenGive, amountGive, expires, nonce, maker, order.v, order.r, order.s, amountGet, exchangeAddress, { from: taker });
+    //let trade = await instantTrade.instantTrade(tokenGet, amountGet, tokenGive, amountGive, expires, nonce, maker, order.v, order.r, order.s, amountGet, exchangeAddress, { from: taker });
+    let trade = await instantTrade.sellTokens(tokenGet, amountGet, tokenGive, amountGive, expires, nonce, maker, order.v, order.r, order.s, amountGet, exchangeAddress, { from: taker });
     let gas = trade.receipt.gasUsed * gasPrice;
 
     assert.equal(String(await web3.eth.getBalance(taker)), String(etherBalance.plus(amountGive).minus(gas)), "Ether balance normal");
@@ -161,7 +162,8 @@ contract("InstantTrade", function (accounts) {
 
     let amountFee = (amountGet * 1.004); //add 0.4%
 
-    let trade = await instantTrade.instantTrade(tokenGet, amountGet, tokenGive, amountGive, expires, nonce, maker, order.v, order.r, order.s, amountGet, exchangeAddress, { from: taker, value: amountFee });
+    //let trade = await instantTrade.instantTrade(tokenGet, amountGet, tokenGive, amountGive, expires, nonce, maker, order.v, order.r, order.s, amountGet, exchangeAddress, { from: taker, value: amountFee });
+    let trade = await instantTrade.buyTokens(tokenGet, amountGet, tokenGive, amountGive, expires, nonce, maker, order.v, order.r, order.s, amountGet, exchangeAddress, { from: taker, value: amountFee });
     let gas = trade.receipt.gasUsed * gasPrice;
 
     assert.equal(String(await web3.eth.getBalance(taker)), String(etherBalance.minus(amountFee).minus(gas)), "Ether balance normal");
@@ -213,7 +215,8 @@ contract("InstantTrade", function (accounts) {
 
     let amountFee = (orderValues[1] * 1.004); //add 0.4%
 
-    let trade = await instantTrade.instantTrade0x(orderAddresses, orderValues, order.v, order.r, order.s, orderValues[1], { from: taker, value: amountFee });
+    //let trade = await instantTrade.instantTrade0x(orderAddresses, orderValues, order.v, order.r, order.s, orderValues[1], { from: taker, value: amountFee });
+    let trade = await instantTrade.buyTokens0x(orderAddresses, orderValues, order.v, order.r, order.s, orderValues[1], { from: taker, value: amountFee });
     let gas = trade.receipt.gasUsed * gasPrice;
 
     assert.equal(String(await web3.eth.getBalance(taker)), String(etherBalance.minus(amountFee).minus(gas)), "Ether balance normal");
@@ -266,7 +269,8 @@ contract("InstantTrade", function (accounts) {
     let allowedTaker = await token.allowance(taker, instantTrade.address);
     assert.equal(String(allowedTaker), String(amountFee), 'taker allowance');
 
-    let trade = await instantTrade.instantTrade0x(orderAddresses, orderValues, order.v, order.r, order.s, orderValues[1], { from: taker });
+    //let trade = await instantTrade.instantTrade0x(orderAddresses, orderValues, order.v, order.r, order.s, orderValues[1], { from: taker });
+    let trade = await instantTrade.sellTokens0x(orderAddresses, orderValues, order.v, order.r, order.s, orderValues[1], { from: taker });
     let gas = trade.receipt.gasUsed * gasPrice;
 
     assert.equal(String(await web3.eth.getBalance(taker)), String(etherBalance.plus(orderValues[0]).minus(gas)), "Ether balance normal");
