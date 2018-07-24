@@ -8,10 +8,7 @@ var ZeroX = artifacts.require("./InstantTradeContracts/0x/Exchange.sol");
 var ZeroProxy = artifacts.require("./InstantTradeContracts/0x/TokenTransferProxy.sol");
 var ZRXToken = artifacts.require("./InstantTradeContracts/0x/ZRXToken.sol");
 
-var util_abi = require('ethereumjs-abi');
-var util = require('ethereumjs-util');
-//var util = require('./util.js');
-//var async = require('async');
+var util = require('./util.js');
 var config = require('../truffle-config.js');
 
 contract("InstantTrade", function (accounts) {
@@ -74,41 +71,11 @@ contract("InstantTrade", function (accounts) {
 
 
   function signOrder(exchangeAddress, maker, tokenGet, amountGet, tokenGive, amountGive, expires, nonce) {
-
-    let values = [exchangeAddress, tokenGet, amountGet, tokenGive, amountGive, expires, nonce];
-    let types = ["address", "address", "uint256", "address", "uint256", "uint256", "uint256"];
-
-    const hash = `0x${util_abi.soliditySHA256(types, values).toString('hex')}`;
-
-    let sigResult = web3.eth.sign(maker, hash);
-
-    let sig = util.fromRpcSig(sigResult);
-    sig.r = `0x${sig.r.toString('hex')}`
-    sig.s = `0x${sig.s.toString('hex')}`
-    sig.hash = hash;
-    return sig;
-
-
+    return util.signOrder(web3, exchangeAddress, maker, tokenGet, amountGet, tokenGive, amountGive, expires, nonce);
   }
 
   function sign0xOrder(exchangeAddress, orderAddresses, orderValues, hash) {
-
-    let values = [exchangeAddress, orderAddresses[0], orderAddresses[1], orderAddresses[2], orderAddresses[3], orderAddresses[4],
-      orderValues[0], orderValues[1], orderValues[2], orderValues[3], orderValues[4], orderValues[5]
-    ];
-    let types = ["address", "address", "address", "address", "address", "address",
-      "uint256", "uint256", "uint256", "uint256", "uint256", "uint256"
-    ];
-
-    //hash = `0x${util_abi.soliditySHA256(types, values).toString('hex')}`;
-
-    let sigResult = web3.eth.sign(orderAddresses[0], hash);
-
-    let sig = util.fromRpcSig(sigResult);
-    sig.r = `0x${sig.r.toString('hex')}`
-    sig.s = `0x${sig.s.toString('hex')}`
-    sig.hash = hash;
-    return sig;
+    return util.sign0xOrder(web3, exchangeAddress, orderAddresses, orderValues, hash);
   }
 
   it("Sell tokens EtherDelta", async function () {

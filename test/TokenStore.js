@@ -1,13 +1,12 @@
 var TokenStore = artifacts.require("./TokenStore.sol");
 var AccountModifiers = artifacts.require("./AccountModifiers.sol");
-var Token = artifacts.require("./TokenTemplate.sol");
+var Token = artifacts.require("./InstantTradeContracts/EIP20.sol"); 
+// use EIP20 for Token instead of TokenTemplate.sol to avoid issues with compilers >= 0.4.22
 
-var sha256 = require('js-sha256').sha256;
 var util = require('./util.js');
-var async = require('async');
 var config = require('../truffle-config.js');
 
-contract('TokenStore', function(accounts) {
+contract('TokenStore', function (accounts) {
 
   var unlockedAccounts = 5;
   var accs = accounts.slice(0, unlockedAccounts - 1); // Last account is used for fees only
@@ -18,519 +17,357 @@ contract('TokenStore', function(accounts) {
   const depositedEther = 100000;
   const depositedToken = 1000000;
   const defaultExpirationInBlocks = 100;
-  const failedTransactionError = "Error: VM Exception while processing transaction: invalid opcode";
+  const revertTransactionError = "VM Exception while processing transaction: revert";
+  const opcodeTransactionError = "VM Exception while processing transaction: invalid opcode";
+
+
+
+  var token1, token2, dec;
+
+  beforeEach('setup tokens and balances for each test', async function () {
+    dec = await TokenStore.new(fee, 0, { from: accounts[feeAccount] });
+    token1 = await Token.new(userToken * accounts.length, "TestToken", 3, "TT1", { from: accounts[feeAccount] });
+    token2 = await Token.new(userToken * accounts.length, "TestToken", 3, "TT2", { from: accounts[feeAccount] });
+
+    for (let i = 0; i < unlockedAccounts; i++) {
+      // Distribute tokens to all accounts
+      await token1.transfer(accounts[i], userToken, { from: accounts[feeAccount] });
+
+      //Deposit tokens for all accounts
+      await token1.approve(dec.address, depositedToken, { from: accounts[i] });
+      await dec.depositToken(token1.address, depositedToken, { from: accounts[i] });
+
+      await token2.transfer(accounts[i], userToken, { from: accounts[feeAccount] });
+
+      await token2.approve(dec.address, depositedToken, { from: accounts[i] });
+      await dec.depositToken(token2.address, depositedToken, { from: accounts[i] });
+    }
+
+    for (let i = 0; i < accs.length; i++) {
+      //Deposit ether for all accounts (besides feeAccount)
+      await dec.deposit({ from: accs[i], value: depositedEther });
+    }
+  });
+
 
   ///////////////////////////////////////////////////////////////////////////////////
   // Helper functions
   ///////////////////////////////////////////////////////////////////////////////////
 
-  // Creates a test token and distributes among all test accounts
-  function createAndDistributeToken(symbol, callback) {
-    var token;
-    return Token.new(userToken*accounts.length, "TestToken", 3, symbol, {from: accounts[feeAccount]}).then(function(instance) {
-      token = instance;
-    }).then(function(result) {
-      return new Promise((resolve, reject) => {
-        async.eachSeries(accounts,
-          (account, callbackEach) => {
-            token.transfer(account, userToken, {from: accounts[feeAccount]}).then(function(result) {
-              callbackEach(null);
-            });
-          },
-          () => {
-            resolve(token);
-          });
-      });
-    });
-  }
 
-  // Deposits a portion of the token to the exchange from all test accounts
-  function depositTokenByAllAccounts(dec, token) {
-    return new Promise((resolve, reject) => {
-      async.eachSeries(accounts,
-        (account, callbackEach) => {
-          token.approve(dec.address, depositedToken, {from: account}).then(function(result) {
-            dec.depositToken(token.address, depositedToken, {from: account}).then(function(result) {
-              callbackEach(null);
-            });
-          },
-          () => {
-            resolve();
-          });
-        });
-    });
-  }
-
-  // Deposit ether to the exchange from all test accounts
-  function depositEtherByAllAccounts(dec) {
-    return new Promise((resolve, reject) => {
-      async.eachSeries(accs,
-        (account, callbackEach) => {
-          dec.deposit({from: account, value: depositedEther}).then(function(result) {
-            callbackEach(null);
-          });
-        },
-        () => {
-          resolve();
-        });
-    });
-  }
-
-  // Creates a bunch of tokens, distributes them, deposits ether and tokens
-  // by all the participants to the exchange so we can test different operations
-  function initialConfiguration() {
-    var token1, token2;
-    var dec;
-    return TokenStore.new(fee, 0, {from: accounts[feeAccount]}).then(function(instance) {
-      dec = instance;
-      return createAndDistributeToken("TT1");
-    }).then(function(instance) {
-      token1 = instance;
-      return createAndDistributeToken("TT2");
-    }).then(function(instance) {
-      token2 = instance;
-      return depositTokenByAllAccounts(dec, token1);
-    }).then(function(result) {
-      return depositTokenByAllAccounts(dec, token2);
-    }).then(function(result) {
-      return depositEtherByAllAccounts(dec);
-    }).then(function(result) {
-      return {dec: dec, token1: token1, token2: token2};
-    });
-  }
-  
-  function executePromises(checks) {
-    return new Promise((resolve, reject) => {
-      async.eachSeries(checks,
-        (check, callbackEach) => {
-          check().then(function(result) {
-            callbackEach(null);
-          });
-        },
-        () => {
-          resolve();
-        });
-    });
-  }
-  
   function getBlockNumber() {
-    return new Promise((resolve, reject) => {
-      web3.eth.getBlockNumber((error, result) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-        resolve(result);
-      });
-    });
+    return Number(web3.eth.blockNumber);
   }
-  
-  function getAccountBalance(account) {
-    return new Promise((resolve, reject) => {
-      web3.eth.getBalance(account, (error, result) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-        resolve(result);
-      });
-    });
+
+  async function getAccountBalance(account) {
+    return await web3.eth.getBalance(account);
   }
-  
-  function signOrder(dec, creatorAddress, tokenGet, amountGet, tokenGive, amountGive, expires, nonce) {
-    const condensed = util.pack([
-      dec.address,
-      tokenGet,
-      amountGet,
-      tokenGive,
-      amountGive,
-      expires,
-      nonce,
-    ], [160, 160, 256, 160, 256, 256, 256]);
-    const hash = sha256(new Buffer(condensed, 'hex'));
-    return util.promisify(util.sign, [web3, creatorAddress, hash, ''])  
+
+
+  function signOrder(exchangeAddress, creatorAddress, tokenGet, amountGet, tokenGive, amountGive, expires, nonce) {
+
+    return util.signOrder(web3, exchangeAddress, creatorAddress, tokenGet, amountGet, tokenGive, amountGive, expires, nonce);
   }
-  
-  function executeOrder(dec, creatorAddress, tokenGet, amountGet, tokenGive, amountGive, amountGiven, from, expire, nonce) {
-    var realExpire;
+
+  //Place and trade an order  (last 3 params can be optional/undefined)
+  async function executeOrder(dec, creatorAddress, tokenGet, amountGet, tokenGive, amountGive, amountGiven, from, expire, nonce, expectedError) {
+
     var realNonce = nonce || Math.floor(Math.random());
-    return getBlockNumber().then(function(result) {
-      realExpire = expire || result+defaultExpirationInBlocks;
-      return signOrder(dec, creatorAddress, tokenGet, amountGet, tokenGive, amountGive, realExpire, realNonce);
-    }).then(function(result) {
-      return dec.trade(tokenGet, amountGet, tokenGive, amountGive, realExpire,
-          realNonce, creatorAddress, result.v, result.r, result.s, amountGiven, {from: from});
-    });
+    var blockNumber = getBlockNumber();
+    var realExpire = expire || blockNumber + defaultExpirationInBlocks;
+
+    let order = signOrder(dec.address, creatorAddress, tokenGet, amountGet, tokenGive, amountGive, realExpire, realNonce);
+
+    if (expectedError) {
+      try {
+        await dec.trade(tokenGet, amountGet, tokenGive, amountGive, realExpire,
+          realNonce, creatorAddress, order.v, order.r, order.s, amountGiven, { from: from });
+        return true;
+      } catch (error) {
+        assert.equal(error.message, expectedError, 'Valid error code for trade');
+        return false;
+      }
+    } else {
+      await dec.trade(tokenGet, amountGet, tokenGive, amountGive, realExpire,
+        realNonce, creatorAddress, order.v, order.r, order.s, amountGiven, { from: from });
+      return true;
+    }
   }
-  
+
+
   ///////////////////////////////////////////////////////////////////////////////////
   // Tests functions
   ///////////////////////////////////////////////////////////////////////////////////
-  
-  it("Depositing", function() {
-    
-    return initialConfiguration().then(function(result) {
-      var dec = result.dec;
-      var token1 = result.token1;
-      var token2 = result.token2;
-      
-      var checks = [
-        function() { return dec.balanceOf.call(token1.address, accounts[0]).then(function(result) {
-          assert.equal(result.toNumber(), depositedToken, "Token #1 deposit for acc #0 was not successful");
-        }) },
-        function() { return dec.balanceOf.call(token2.address, accounts[0]).then(function(result) {
-          assert.equal(result.toNumber(), depositedToken, "Token #2 deposit for acc #0 was not successful");
-        }) },
-        function() { return dec.balanceOf.call(0, accounts[0]).then(function(result) {
-          assert.equal(result.toNumber(), depositedEther, "Ether deposit for acc #0 was not successful");
-        }) },
-        function() { return dec.balanceOf.call(token1.address, accounts[1]).then(function(result) {
-          assert.equal(result.toNumber(), depositedToken, "Token #1 deposit for acc #0 was not successful");
-        }) },
-        function() { return dec.balanceOf.call(token2.address, accounts[1]).then(function(result) {
-          assert.equal(result.toNumber(), depositedToken, "Token #2 deposit for acc #0 was not successful");
-        }) },
-        function() { return dec.balanceOf.call(0, accounts[1]).then(function(result) {
-          assert.equal(result.toNumber(), depositedEther, "Ether deposit for acc #0 was not successful");
-        }) },
-        function() { return dec.fee.call().then(function(result) {
-          assert.equal(result.toNumber().valueOf(), fee, "The fee is incorrect");
-        }) }
-      ];
-      
-      return executePromises(checks);
-    });
-  });
-  
-  it("Withdrawals", function() {
 
-    var dec, token1;
+  it("Depositing", async function () {
+
+    /* Deposits made in beforeEach, check the result here */
+
+    let result = await dec.balanceOf(token1.address, accounts[0]);
+    assert.equal(result.toString(), depositedToken.toString(), "Token #1 deposit for acc #0 was not successful");
+
+    result = await dec.balanceOf(token2.address, accounts[0]);
+    assert.equal(result.toString(), depositedToken.toString(), "Token #2 deposit for acc #0 was not successful");
+
+    result = await dec.balanceOf(0, accounts[0]);
+    assert.equal(result.toString(), depositedEther.toString(), "Ether deposit for acc #0 was not successful");
+
+    result = await dec.balanceOf(token1.address, accounts[1]);
+    assert.equal(result.toString(), depositedToken.toString(), "Token #1 deposit for acc #1 was not successful");
+
+    result = await dec.balanceOf(token2.address, accounts[1]);
+    assert.equal(result.toString(), depositedToken.toString(), "Token #2 deposit for acc #1 was not successful");
+
+    result = await dec.balanceOf(0, accounts[1]);
+    assert.equal(result.toString(), depositedEther.toString(), "Ether deposit for acc #1 was not successful");
+
+    result = await dec.fee();
+    assert.equal(result.toString(), fee.toString(), "The fee is incorrect");
+  });
+
+
+  it("Withdrawals", async function () {
+
     var userEther;
-    var gasSpent = 0; // We will need it to get precise remaining ether amount
-    
-    return initialConfiguration().then(function(result) {
-      dec = result.dec;
-      token1 = result.token1;
-      
+    var gasSpent = web3.toBigNumber(0); // We will need it to get precise remaining ether amount, bignumber to avoid rounding issues
 
-      var checks = [
-        function() { return getAccountBalance(accounts[0]).then(function(result) {
-          userEther = result.toNumber();
-        }) },
-        function() { return token1.balanceOf.call(accounts[0]).then(function(result) {
-          assert.equal(result.toNumber(), userToken - depositedToken, "Token #1 deposit for acc #0 is not correct");
-        }) },
-      ];
-      
-      return executePromises(checks);
-      
-    }).then(function(result) {
+    var result = await getAccountBalance(accounts[0]);
+    userEther = result;
+    result = await token1.balanceOf(accounts[0]);
+    assert.equal(result.toString(), (userToken - depositedToken).toString(), "Token #1 deposit for acc #0 is not correct");
 
-      var operations = [
-        function() { return dec.withdraw(depositedEther, {from: accounts[0]}).then(function(result) { gasSpent += result.receipt.gasUsed; }); },
-        function() { return dec.withdrawToken(token1.address, depositedToken, {from: accounts[0]}).then(function(result) { gasSpent += result.receipt.gasUsed; }); },
-      ];
-      
-      return executePromises(operations);
-      
-    }).then(function(result) {
 
-      var checks = [
-        function() { return getAccountBalance(accounts[0]).then(function(result) {
-          assert.equal(result.toNumber(), userEther + depositedEther - gasSpent * gasPrice, "Ether balance was not increased");
-        }) },
-        function() { return token1.balanceOf.call(accounts[0]).then(function(result) {
-          assert.equal(result.toNumber(), userToken, "Token #1 balance is not increased");
-        }) },
-        function() { return dec.balanceOf.call(0, accounts[0]).then(function(result) {
-          assert.equal(result.toNumber(), 0, "Exchange still thinks it holds some ether for the user");
-        }) },
-        function() { return dec.balanceOf.call(token1.address, accounts[0]).then(function(result) {
-          assert.equal(result.toNumber(), 0, "Exchange still thinks it holds some tokens for the user");
-        }) },
-      ];
-      
-      return executePromises(checks);
-    });
+    result = await dec.withdraw(depositedEther, { from: accounts[0] });
+    gasSpent = gasSpent.plus(result.receipt.gasUsed);
+    result = await dec.withdrawToken(token1.address, depositedToken, { from: accounts[0] });
+    gasSpent = gasSpent.plus(result.receipt.gasUsed);
+
+
+    result = await getAccountBalance(accounts[0]);
+    assert.equal(result.toString(), userEther.plus(depositedEther).minus(gasSpent.times(gasPrice)).toString(), "Ether balance was not increased");
+
+    result = await token1.balanceOf(accounts[0]);
+    assert.equal(result.toString(), userToken.toString(), "Token #1 balance is not increased");
+
+    result = await dec.balanceOf(0, accounts[0]);
+    assert.equal(result.toString(), "0", "Exchange still thinks it holds some ether for the user");
+
+    result = await dec.balanceOf(token1.address, accounts[0]);
+    assert.equal(result.toString(), "0", "Exchange still thinks it holds some tokens for the user");
+
   });
-  
+
+
   // Note: this tests only Eth to Token but since we treat eth internally
   // as a token with 0 address, direction is not important. It can also be
   // Token to Token for that matter.
-  it("Successful trade", function() {
-  
-    var dec;
-    
+  it("Successful trade", async function () {
+
     var tokenGet = 0;       // Eth as a token type
-    var tokenGive;          // Token address for wanted token
+    var tokenGive = token1.address; // Token address for wanted token
     var amountGet = 20000;   // Eth wanted
     var amountGive = 100000; // Token given in return
     var amountGiven = 10000; // Ether given by a counter-party
-    
-    return initialConfiguration().then(function(result) {
 
-      dec = result.dec;
-      tokenGive = result.token1.address;
+    await executeOrder(dec, accounts[0], tokenGet, amountGet, tokenGive, amountGive, amountGiven, accounts[1]);
 
-      return executeOrder(dec, accounts[0], tokenGet, amountGet, tokenGive, amountGive, amountGiven, accounts[1]);
+    var result = await dec.balanceOf(tokenGive, accounts[0])
+    assert.equal(result.toString(), "950000", "Token sale for acc #0 was not successful");
 
-    }).then(function(result) {
+    result = await dec.balanceOf(tokenGive, accounts[1])
+    assert.equal(result.toString(), "1050000", "Token purchase for acc #1 was not successful");
 
-      var checks = [
-        function() { return dec.balanceOf.call(tokenGive, accounts[0]).then(function(result) {
-          assert.equal(result.toNumber(), 950000, "Token sale for acc #0 was not successful");
-        }) },
-        function() { return dec.balanceOf.call(tokenGive, accounts[1]).then(function(result) {
-          assert.equal(result.toNumber(), 1050000, "Token purchase for acc #1 was not successful");
-        }) },
-        function() { return dec.balanceOf.call(tokenGet, accounts[0]).then(function(result) {
-          assert.equal(result.toNumber(), 110000, "Eth purchase for acc #0 was not successful");
-        }) },
-        function() { return dec.balanceOf.call(tokenGet, accounts[1]).then(function(result) {
-          assert.equal(result.toNumber(), 89970, "Eth sale for acc #1 was not successful");
-        }) },
-        function() { return dec.balanceOf.call(tokenGet, accounts[feeAccount]).then(function(result) {
-          assert.equal(result.toNumber(), 30, "Eth fee is incorrect");
-        }) }
-      ];
+    result = await dec.balanceOf(tokenGet, accounts[0])
+    assert.equal(result.toString(), "110000", "Eth purchase for acc #0 was not successful");
 
-      return executePromises(checks);
-    });
+    result = await dec.balanceOf(tokenGet, accounts[1])
+    assert.equal(result.toString(), "89970", "Eth sale for acc #1 was not successful");
+
+    result = await dec.balanceOf(tokenGet, accounts[feeAccount])
+    assert.equal(result.toNumber().valueOf(), 30, "Eth fee is incorrect");
   });
-  
-  it("Account modifiers", function() {
-  
-    var dec;
-    var accountModifiers;
-    
+
+
+  it("Account modifiers", async function () {
+
+    var accountModifiers = await AccountModifiers.new({ from: accounts[feeAccount] });
+
     var tokenGet = 0;       // Eth as a token type
-    var tokenGive;          // Token address for wanted token
+    var tokenGive = token1.address;          // Token address for wanted token
     var amountGet = 20000;   // Eth wanted
     var amountGive = 100000; // Token given in return
     var amountGiven = 10000; // Ether given by a counter-party
-    
-    return initialConfiguration().then(function(result) {
 
-      dec = result.dec;
-      tokenGive = result.token1.address;
-      
-      return AccountModifiers.new({from: accounts[feeAccount]});
-    }).then(function(result) {
-    
-    	accountModifiers = result;
-    	return accountModifiers.setModifiers(accounts[0], 20, 30, {from: accounts[feeAccount]});
-    	
-    }).then(function(result) {
-    	
-    	return accountModifiers.setModifiers(accounts[1], 40, 50, {from: accounts[feeAccount]});
-    	
-    }).then(function(result) {
-    
-      return dec.changeAccountModifiers(accountModifiers.address, {from: accounts[feeAccount]});
-    
-    }).then(function(result) {
 
-      return executeOrder(dec, accounts[0], tokenGet, amountGet, tokenGive, amountGive, amountGiven, accounts[1]);
+    await accountModifiers.setModifiers(accounts[0], 20, 30, { from: accounts[feeAccount] });
+    await accountModifiers.setModifiers(accounts[1], 40, 50, { from: accounts[feeAccount] });
+    await dec.changeAccountModifiers(accountModifiers.address, { from: accounts[feeAccount] });
 
-    }).then(function(result) {
+    await executeOrder(dec, accounts[0], tokenGet, amountGet, tokenGive, amountGive, amountGiven, accounts[1]);
 
-      // Based on the numbers above taker fee discount (account #1) is 40%
-      // maker rebate (account #0) is 30%. For default fee of 0.3% (30 wei)
-      // that would translate in (100% - 40%) * 30 wei = 18 wei taker fee and
-      // 30% * 18 wei = 5.4 (~5) wei as maker rebate
-      var checks = [
-        function() { return dec.balanceOf.call(tokenGive, accounts[0]).then(function(result) {
-          assert.equal(result.toNumber(), 950000, "Token sale for acc #0 was not successful");
-        }) },
-        function() { return dec.balanceOf.call(tokenGive, accounts[1]).then(function(result) {
-          assert.equal(result.toNumber(), 1050000, "Token purchase for acc #1 was not successful");
-        }) },
-        function() { return dec.balanceOf.call(tokenGet, accounts[0]).then(function(result) {
-          assert.equal(result.toNumber(), 110005, "Eth purchase for acc #0 was not successful");
-        }) },
-        function() { return dec.balanceOf.call(tokenGet, accounts[1]).then(function(result) {
-          assert.equal(result.toNumber(), 89982 /*100000-18*/, "Eth sale for acc #1 was not successful");
-        }) },
-        function() { return dec.balanceOf.call(tokenGet, accounts[feeAccount]).then(function(result) {
-          assert.equal(result.toNumber(), 13 /*18-5*/, "Eth fee is incorrect");
-        }) }
-      ];
+    // Based on the numbers above taker fee discount (account #1) is 40%
+    // maker rebate (account #0) is 30%. For default fee of 0.3% (30 wei)
+    // that would translate in (100% - 40%) * 30 wei = 18 wei taker fee and
+    // 30% * 18 wei = 5.4 (~5) wei as maker rebate
 
-      return executePromises(checks);
-    });
+    var result = await dec.balanceOf(tokenGive, accounts[0]);
+    assert.equal(result.toString(), "950000", "Token sale for acc #0 was not successful");
+
+    result = await dec.balanceOf(tokenGive, accounts[1]);
+    assert.equal(result.toString(), "1050000", "Token purchase for acc #1 was not successful");
+
+    result = await dec.balanceOf(tokenGet, accounts[0]);
+    assert.equal(result.toString(), "110005", "Eth purchase for acc #0 was not successful");
+
+    result = await dec.balanceOf(tokenGet, accounts[1]);
+    assert.equal(result.toString(), "89982" /*100000-18*/, "Eth sale for acc #1 was not successful");
+
+    result = await dec.balanceOf(tokenGet, accounts[feeAccount]);
+    assert.equal(result.toNumber().valueOf(), 13 /*18-5*/, "Eth fee is incorrect");
+
   });
-  
-  it("Failed trades", function() {
-  
-    var dec;
+
+
+  it("Failed trades", async function () {
 
     var tokenGet = 0;       // Eth as a token type
-    var tokenGive;          // Other token type
+    var tokenGive = token1.address;          // Other token type
     var amountGet = 2000;   // Eth wanted
     var amountGive = 10000; // Token given in return
-    
+
     var fixedExpire = 1000000000; // High enough block number
     var fixedNonse = 0;
 
-    return initialConfiguration().then(function(result) {
-    
-      dec = result.dec;
-      tokenGive = result.token1.address;
+    // Tries to buy more than total order request
+    var amountGiven1 = 3000;
+    var traded = await executeOrder(dec, accounts[0], tokenGet, amountGet, tokenGive, amountGive, amountGiven1, accounts[1], undefined, undefined, revertTransactionError);
+    assert.equal(traded, false, "Transaction should not have passed");
 
-      // Tries to buy more than total order request
-      var amountGiven1 = 3000;
-      return executeOrder(dec, accounts[0], tokenGet, amountGet, tokenGive, amountGive, amountGiven1, accounts[1]);
-    }).then(function(result) {
-      assert(false, "Transaction passed, it should not had");
-    }, function(error) {
-      assert.equal(error, failedTransactionError, "Incorrect error");
+    // Tries to offer more than the buyer has (using an account that didn't deposit)
+    var amountGiven2 = 1000;
 
-      // Tries to offer more than the buyer has (using an account that didn't deposit)
-      var amountGiven2 = 1000;
-      return executeOrder(dec, accounts[0], tokenGet, amountGet, tokenGive, amountGive, amountGiven2, accounts[feeAccount]);
-    }).then(function(result) {
-      assert(false, "Transaction passed, it should not had");
-    }, function(error) {
-      assert.equal(error, failedTransactionError, "Incorrect error");
+    traded = await executeOrder(dec, accounts[0], tokenGet, amountGet, tokenGive, amountGive, amountGiven2, accounts[feeAccount], undefined, undefined, opcodeTransactionError);
+    assert.equal(traded, false, "Transaction should not have passed");
 
-      // Oversubscribed order (multiple trades with overflowing total)
-      var amountGiven31 = 1500;
-      return executeOrder(dec, accounts[0], tokenGet, amountGet, tokenGive, amountGive, amountGiven31, accounts[1], fixedExpire, fixedNonse);
-    }).then(function(result) {
-      var amountGiven32 = 700;
-      return executeOrder(dec, accounts[0], tokenGet, amountGet, tokenGive, amountGive, amountGiven32, accounts[1], fixedExpire, fixedNonse);
-    }, function(error) {
-      assert(false, "First transaction should pass, we're going to fail on a second");
-    }).then(function(result) {
-      assert(false, "Second transaction passed, it should not had");
-    }, function(error) {
-      assert.equal(error, failedTransactionError, "Incorrect error");
-    });
+
+    // Oversubscribed order (multiple trades with overflowing total)
+    var amountGiven31 = 1500;
+    traded = await executeOrder(dec, accounts[0], tokenGet, amountGet, tokenGive, amountGive, amountGiven31, accounts[1], fixedExpire, fixedNonse, revertTransactionError);
+    assert.equal(traded, true, "First trade should pass");
+
+    var amountGiven32 = 700;
+
+    traded = await executeOrder(dec, accounts[0], tokenGet, amountGet, tokenGive, amountGive, amountGiven32, accounts[1], fixedExpire, fixedNonse, revertTransactionError);
+    assert.equal(traded, false, "Second trade should not have passed");
+
   });
-  
+
+
   // Here we create a chain of 3 exchanges and try to migrate funds from 1st to 3rd
-  it("Funds migration", function() {
-    var dec, tempIntermediaryDec, newDec, token1, token2;
+  it("Funds migration", async function () {
 
-    return initialConfiguration().then(function(result) {
-    
-      dec = result.dec;
-      token1 = result.token1;
-      token2 = result.token2;
-      return TokenStore.new(fee, dec.address, {from: accounts[feeAccount]});
-      
-    }).then(function(result) {
-    
-      tempIntermediaryDec = result;
-      // Set a proper successor for the old exchange - temporary intermediary exchange
-      return dec.deprecate(true, tempIntermediaryDec.address, {from: accounts[feeAccount]});
-      
-    }).then(function(result) {
-    
-      return TokenStore.new(fee, tempIntermediaryDec.address, {from: accounts[feeAccount]});
-      
-    }).then(function(result) {
-    
-      newDec = result;
-      // Set a proper successor for the temporary intermediary
-      return tempIntermediaryDec.deprecate(true, newDec.address, {from: accounts[feeAccount]});
-      
-    }).then(function(result) {
-    
-      // Check if the new exchange has zero balance and old exchange has it all
-      var checks = [
-        function() { return newDec.balanceOf.call(token1.address, accounts[1]).then(function(result) {
-          assert.equal(result.toNumber(), 0, "Incorrect value of deposited token #1");
-        }) },
-        function() { return newDec.balanceOf.call(token2.address, accounts[1]).then(function(result) {
-          assert.equal(result.toNumber(), 0, "Incorrect value of deposited token #2");
-        }) },
-        function() { return newDec.balanceOf.call(0, accounts[1]).then(function(result) {
-          assert.equal(result.toNumber(), 0, "Incorrect value of deposited eth");
-        }) },
-        function() { return dec.balanceOf.call(token1.address, accounts[1]).then(function(result) {
-          assert.equal(result.toNumber(), depositedToken, "Incorrect value of deposited token #1");
-        }) },
-        function() { return dec.balanceOf.call(token2.address, accounts[1]).then(function(result) {
-          assert.equal(result.toNumber(), depositedToken, "Incorrect value of deposited token #2");
-        }) },
-        function() { return dec.balanceOf.call(0, accounts[1]).then(function(result) {
-          assert.equal(result.toNumber(), depositedEther, "Incorrect value of deposited eth");
-        }) },
-        function() { return token1.balanceOf.call(dec.address).then(function(result) {
-          assert.equal(result.toNumber(), depositedToken * unlockedAccounts, "Token #1 stores incorrect value for dec");
-        }) },
-        function() { return token2.balanceOf.call(dec.address).then(function(result) {
-          assert.equal(result.toNumber(), depositedToken * unlockedAccounts, "Token #2 stores incorrect value for dec");
-        }) },
-        function() { return token1.balanceOf.call(newDec.address).then(function(result) {
-          assert.equal(result.toNumber(), 0, "Token #1 stores incorrect value for newDec");
-        }) },
-        function() { return token2.balanceOf.call(newDec.address).then(function(result) {
-          assert.equal(result.toNumber(), 0, "Token #2 stores incorrect value for newDec");
-        }) }
-      ];
+    var tempIntermediaryDec = await TokenStore.new(fee, dec.address, { from: accounts[feeAccount] });
 
-      return executePromises(checks);
-      
-    }).then(function(result) {
-      return dec.migrateFunds([token1.address, token2.address], {from: accounts[1]});
-    }).then(function(result) {
+    // Set a proper successor for the old exchange - temporary intermediary exchange
+    await dec.deprecate(true, tempIntermediaryDec.address, { from: accounts[feeAccount] });
 
-      // Check in reverse now - new exchange should have this user tokens/ether now
-      var checks = [
-        function() { return dec.balanceOf.call(token1.address, accounts[1]).then(function(result) {
-          assert.equal(result.toNumber(), 0, "Incorrect value of deposited token #1");
-        }) },
-        function() { return dec.balanceOf.call(token2.address, accounts[1]).then(function(result) {
-          assert.equal(result.toNumber(), 0, "Incorrect value of deposited token #2");
-        }) },
-        function() { return dec.balanceOf.call(0, accounts[1]).then(function(result) {
-          assert.equal(result.toNumber(), 0, "Incorrect value of deposited eth");
-        }) },
-        function() { return newDec.balanceOf.call(token1.address, accounts[1]).then(function(result) {
-          assert.equal(result.toNumber(), depositedToken, "Incorrect value of deposited token #1");
-        }) },
-        function() { return newDec.balanceOf.call(token2.address, accounts[1]).then(function(result) {
-          assert.equal(result.toNumber(), depositedToken, "Incorrect value of deposited token #2");
-        }) },
-        function() { return newDec.balanceOf.call(0, accounts[1]).then(function(result) {
-          assert.equal(result.toNumber(), depositedEther, "Incorrect value of deposited eth");
-        }) },
-        function() { return token1.balanceOf.call(dec.address).then(function(result) {
-          assert.equal(result.toNumber(), depositedToken * (unlockedAccounts - 1), "Token #1 stores incorrect value for dec");
-        }) },
-        function() { return token2.balanceOf.call(dec.address).then(function(result) {
-          assert.equal(result.toNumber(), depositedToken * (unlockedAccounts - 1), "Token #2 stores incorrect value for dec");
-        }) },
-        function() { return token1.balanceOf.call(newDec.address).then(function(result) {
-          assert.equal(result.toNumber(), depositedToken, "Token #1 stores incorrect value for newDec");
-        }) },
-        function() { return token2.balanceOf.call(newDec.address).then(function(result) {
-          assert.equal(result.toNumber(), depositedToken, "Token #2 stores incorrect value for newDec");
-        }) },
-        
-        // Bonus: check that normal users cannot access the migration helpers
-        // so they cannot send to somebody else by mistake
-        function() {
-          return newDec.depositForUser(accounts[0], {from: accounts[2], value: 1}).then(function(result) {
-            assert(false, "User was able to deposit to a different user address (shouldn't have been)");
-          }, function(error) {
-            assert.equal(error, failedTransactionError, "Incorrect error");
-          });
-        },
-        function() {
-          return token1.approve(newDec.address, 100, {from: accounts[2]}).then(function(result) {
-            return newDec.depositTokenForUser(token1.address, 100, accounts[0], {from: accounts[2]}).then(function(result) {
-              assert(false, "User was able to deposit to a different user address (shouldn't have been)");
-            }, function(error) {
-              assert.equal(error, failedTransactionError, "Incorrect error");
-            });
-          });
-        },
-      ];
+    var newDec = await TokenStore.new(fee, tempIntermediaryDec.address, { from: accounts[feeAccount] });
 
-      return executePromises(checks);      
-    } );
+    // Set a proper successor for the temporary intermediary
+    await tempIntermediaryDec.deprecate(true, newDec.address, { from: accounts[feeAccount] });
+
+
+    // Check if the new exchange has zero balance and old exchange has it all
+
+    var result = await newDec.balanceOf(token1.address, accounts[1]);
+    assert.equal(result.toString(), "0", "Incorrect value of deposited token #1");
+
+    result = await newDec.balanceOf(token2.address, accounts[1]);
+    assert.equal(result.toString(), "0", "Incorrect value of deposited token #2");
+
+    result = await newDec.balanceOf(0, accounts[1]);
+    assert.equal(result.toString(), "0", "Incorrect value of deposited eth");
+
+    result = await dec.balanceOf(token1.address, accounts[1]);
+    assert.equal(result.toString(), depositedToken.toString(), "Incorrect value of deposited token #1");
+
+    result = await dec.balanceOf(token2.address, accounts[1]);
+    assert.equal(result.toString(), depositedToken.toString(), "Incorrect value of deposited token #2");
+
+    result = await dec.balanceOf(0, accounts[1]);
+    assert.equal(result.toString(), depositedEther.toString(), "Incorrect value of deposited eth");
+
+    result = await token1.balanceOf(dec.address);
+    assert.equal(result.toString(), (depositedToken * unlockedAccounts).toString(), "Token #1 stores incorrect value for dec");
+
+    result = await token2.balanceOf(dec.address);
+    assert.equal(result.toString(), (depositedToken * unlockedAccounts).toString(), "Token #2 stores incorrect value for dec");
+
+    result = await token1.balanceOf(newDec.address);
+    assert.equal(result.toString(), "0", "Token #1 stores incorrect value for newDec");
+
+    result = await token2.balanceOf(newDec.address);
+    assert.equal(result.toString(), "0", "Token #2 stores incorrect value for newDec");
+
+
+    await dec.migrateFunds([token1.address, token2.address], { from: accounts[1] });
+
+
+    // Check in reverse now - new exchange should have this user tokens/ether now
+
+    result = await dec.balanceOf(token1.address, accounts[1]);
+    assert.equal(result.toString(), "0", "Incorrect value of deposited token #1");
+
+    result = await dec.balanceOf(token2.address, accounts[1]);
+    assert.equal(result.toString(), "0", "Incorrect value of deposited token #2");
+
+    result = await dec.balanceOf(0, accounts[1]);
+    assert.equal(result.toString(), "0", "Incorrect value of deposited eth");
+
+    result = await newDec.balanceOf(token1.address, accounts[1]);
+    assert.equal(result.toString(), depositedToken.toString(), "Incorrect value of deposited token #1");
+
+    result = await newDec.balanceOf(token2.address, accounts[1]);
+    assert.equal(result.toString(), depositedToken.toString(), "Incorrect value of deposited token #2");
+
+    result = await newDec.balanceOf(0, accounts[1]);
+    assert.equal(result.toString(), depositedEther.toString(), "Incorrect value of deposited eth");
+
+    result = await token1.balanceOf(dec.address);
+    assert.equal(result.toString(), (depositedToken * (unlockedAccounts - 1)).toString(), "Token #1 stores incorrect value for dec");
+
+    result = await token2.balanceOf(dec.address);
+    assert.equal(result.toString(), (depositedToken * (unlockedAccounts - 1)).toString(), "Token #2 stores incorrect value for dec");
+
+    result = await token1.balanceOf(newDec.address);
+    assert.equal(result.toString(), depositedToken.toString(), "Token #1 stores incorrect value for newDec");
+
+    result = await token2.balanceOf(newDec.address);
+    assert.equal(result.toString(), depositedToken.toString(), "Token #2 stores incorrect value for newDec");
+
+
+    // Bonus: check that normal users cannot access the migration helpers
+    // so they cannot send to somebody else by mistake
+
+    try {
+      result = await newDec.depositForUser(accounts[0], { from: accounts[2], value: 1 });
+      assert(false, "User was able to deposit to a different user address (shouldn't have been)");
+    } catch (error) {
+      assert.equal(error.message, revertTransactionError, "Incorrect error");
+    }
+
+    try {
+      return token1.approve(newDec.address, 100, { from: accounts[2] });
+      return newDec.depositTokenForUser(token1.address, 100, accounts[0], { from: accounts[2] });
+      assert(false, "User was able to deposit to a different user address (shouldn't have been)");
+    } catch (error) {
+      assert.equal(error.message, revertTransactionError, "Incorrect error");
+    }
+
   });
+
+  afterEach('', async function () {
+
+  });
+
 });

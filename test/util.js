@@ -1,14 +1,15 @@
 import BigNumber from 'bignumber.js'
-import Tx from 'ethereumjs-tx'
+//import Tx from 'ethereumjs-tx'
 import ethUtil from 'ethereumjs-util'
-import coder from 'web3/lib/solidity/coder.js'
-import utils from 'web3/lib/utils/utils.js'
-import sha3 from 'web3/lib/utils/sha3.js'
+import ethAbi from 'ethereumjs-abi'
+//import coder from 'web3/lib/solidity/coder.js'
+//import utils from 'web3/lib/utils/utils.js'
+//import sha3 from 'web3/lib/utils/sha3.js'
 
-export function promisify (func, args, self) {
+export function promisify(func, args, self) {
   return new Promise(function (resolve, reject) {
     args.push((err, res) => {
-      if(err) return reject(err)
+      if (err) return reject(err)
       resolve(res)
     })
 
@@ -16,19 +17,19 @@ export function promisify (func, args, self) {
   })
 }
 
-export function ethToWei (eth, divisorIn) {
+export function ethToWei(eth, divisorIn) {
   const divisor = !divisorIn ? 1000000000000000000 : divisorIn
 
   return parseFloat((eth * divisor).toPrecision(10))
 }
 
-export function weiToEth (wei, divisorIn) {
+export function weiToEth(wei, divisorIn) {
   const divisor = !divisorIn ? 1000000000000000000 : divisorIn
 
   return (wei / divisor).toFixed(3)
 }
 
-export function getDivisor (token) {
+export function getDivisor(token) {
   let result = 1000000000000000000
   if (token && token.decimals !== undefined) {
     result = Math.pow(10, token.decimals)
@@ -37,10 +38,48 @@ export function getDivisor (token) {
   return new BigNumber(result)
 }
 
+
+export function signOrder(web3, exchangeAddress, creatorAddress, tokenGet, amountGet, tokenGive, amountGive, expires, nonce) {
+  let values = [exchangeAddress, tokenGet, amountGet, tokenGive, amountGive, expires, nonce];
+  let types = ["address", "address", "uint256", "address", "uint256", "uint256", "uint256"];
+
+  const hash = `0x${ethAbi.soliditySHA256(types, values).toString('hex')}`;
+  let sigResult = web3.eth.sign(creatorAddress, hash);
+  let sig = ethUtil.fromRpcSig(sigResult);
+  sig.r = `0x${sig.r.toString('hex')}`;
+  sig.s = `0x${sig.s.toString('hex')}`;
+  sig.hash = hash;
+  return sig;
+}
+
+export function sign0xOrder(web3, exchangeAddress, orderAddresses, orderValues, orderHash) {
+  /*
+    let values = [exchangeAddress, orderAddresses[0], orderAddresses[1], orderAddresses[2], orderAddresses[3], orderAddresses[4],
+      orderValues[0], orderValues[1], orderValues[2], orderValues[3], orderValues[4], orderValues[5]
+    ];
+    let types = ["address", "address", "address", "address", "address", "address",
+      "uint256", "uint256", "uint256", "uint256", "uint256", "uint256"
+    ];
+
+    hash = `0x${etAbi.soliditySHA256(types, values).toString('hex')}`;
+    */
+
+  let sigResult = web3.eth.sign(orderAddresses[0], orderHash);
+  let sig = ethUtil.fromRpcSig(sigResult);
+  sig.r = `0x${sig.r.toString('hex')}`;
+  sig.s = `0x${sig.s.toString('hex')}`;
+  sig.hash = orderHash;
+  return sig;
+}
+
+
+/*
 export function getRandomInt (min, max) {
   return Math.floor(Math.random() * (max - min)) + min
 }
+*/
 
+/*
 export function getNextNonce (web3, address, callback) {
   web3.eth.getTransactionCount(address, (err, result) => {
     if (err) console.log('util:34', err)
@@ -51,7 +90,9 @@ export function getNextNonce (web3, address, callback) {
     callback(undefined, nextNonce)
   })
 }
+*/
 
+/*
 export function send (web3, contract, address, functionName, argsIn, fromAddress, privateKeyIn, nonceIn, callback) {
   let privateKey = privateKeyIn
   if (privateKeyIn && privateKeyIn.substring(0, 2) === '0x') {
@@ -125,7 +166,9 @@ export function send (web3, contract, address, functionName, argsIn, fromAddress
     }
   })
 }
+*/
 
+/*
 // Crypto
 export function multiplyByNumber(numIn, x, base) {
   let num = numIn
@@ -305,6 +348,8 @@ export function sign (web3, address, msgToSignIn, privateKeyIn, callback) {
           }
         }
       })
-    })
+    }) 
   }
+  
 }
+*/
