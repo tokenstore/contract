@@ -288,6 +288,27 @@ contract("InstantTrade", function (accounts) {
     }
   });
 
+
+  it("Withdraw Store ETH balance", async function () {
+
+    let contractBalance = await web3.eth.getBalance(instantTrade.address);
+    let storeBalance = await etherDelta.balanceOf(zeroAddress, instantTrade.address);
+
+    assert(storeBalance.greaterThan(0));
+
+    try {
+      await instantTrade.withdrawStore(zeroAddress, etherDelta.address, { from: accounts[1] });
+      assert(false, "Only allow withdraw from owner");
+    } catch (error) {
+      assert.equal(error.message, revertError);
+    }
+
+    await instantTrade.withdrawStore(zeroAddress, etherDelta.address, { from: feeAccount });
+
+    assert.equal(String(await web3.eth.getBalance(instantTrade.address)), String(contractBalance.plus(storeBalance)), "ETH withdrawn");
+    assert.equal(String(await await etherDelta.balanceOf(zeroAddress, instantTrade.address)), "0", "Store is empty");
+  });
+
   it("Withdraw Token fees", async function () {
 
     let adminBalance = await token.balanceOf(feeAccount);

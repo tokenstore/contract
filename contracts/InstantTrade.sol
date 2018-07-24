@@ -172,4 +172,16 @@ contract InstantTrade is SafeMath, Ownable {
       require(token.transfer(msg.sender, token.balanceOf(address(this))));
     }
   }  
+  
+  // Withdraw funds that might be left in the exchange contracts
+  function withdrawStore(address _token, address _store) external onlyOwner {
+    TokenStore store = TokenStore(_store);
+    
+    if (_token == address(0)) {
+      store.withdraw(store.balanceOf(_token, this));
+    } else {
+      store.withdrawToken(_token, store.balanceOf(_token, this));
+    }
+  }
+  
 }
