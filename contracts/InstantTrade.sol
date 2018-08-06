@@ -45,7 +45,7 @@ contract InstantTrade is SafeMath, Ownable {
   address public zeroX;
   address public proxyZeroX;
     
-  mapping(address => bool) allowedFallbacks; // Limit fallback to avoid accidental ETH transfers
+  mapping(address => bool) public allowedFallbacks; // Limit fallback to avoid accidental ETH transfers
     
   constructor(address _weth, address _zeroX) Ownable() public {
     wETH = _weth;
