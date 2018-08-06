@@ -3,40 +3,21 @@ pragma solidity ^0.4.13;
 import "./TokenStore.sol";
 
 contract ZeroExchange {
-    
   address public TOKEN_TRANSFER_PROXY_CONTRACT;
-    
-  function fillOrKillOrder(
-    address[5] orderAddresses,
-    uint[6] orderValues,
-    uint fillTakerTokenAmount,
-    uint8 v,
-    bytes32 r,
-    bytes32 s)
-    public {}
-        
-  /*  
-  function fillOrder(
-    address[5] orderAddresses,
-    uint[6] orderValues,
-    uint fillTakerTokenAmount,
-    bool shouldThrowOnInsufficientBalanceOrAllowance,
-    uint8 v,
-    bytes32 r,
-    bytes32 s)
-    public
-    returns (uint filledTakerTokenAmount)
-    {}
-    */
+ 
+  function fillOrKillOrder(address[5] orderAddresses,uint[6] orderValues,uint fillTakerTokenAmount, uint8 v, bytes32 r, bytes32 s) public;
+  function getOrderHash(address[5] orderAddresses, uint[6] orderValues) public view returns (bytes32);
+  function isValidSignature(address signer,bytes32 hash,uint8 v,bytes32 r,bytes32 s)public view returns (bool);
+  function getUnavailableTakerTokenAmount(bytes32 orderHash) public constant returns (uint);
 }
 
 contract WETH {
-  function deposit() public payable {}
-  function withdraw(uint wad) public {}
-  function balanceOf(address _owner) public constant returns (uint256 balance) {}
-  function approve(address _spender, uint256 _value) public returns (bool success) {}
-  function transfer(address _to, uint256 _value) public returns (bool success) {}
-  function transferFrom(address _from, address _to, uint256 _value) public returns (bool success) {}
+  function deposit() public payable;
+  function withdraw(uint wad) public;
+  function balanceOf(address _owner) public constant returns (uint256 balance);
+  function approve(address _spender, uint256 _value) public returns (bool success);
+  function transfer(address _to, uint256 _value) public returns (bool success);
+  function transferFrom(address _from, address _to, uint256 _value) public returns (bool success);
 }
 
 contract InstantTrade is SafeMath, Ownable {
@@ -65,6 +46,13 @@ contract InstantTrade is SafeMath, Ownable {
     allowedFallbacks[_contract] = _allowed;
   }
   
+  
+  // return the remaining volume of an exchange order in tokenGet. (Token Store style)
+  function availableVolume(address _tokenGet, uint _amountGet, address _tokenGive, uint _amountGive,
+    uint _expires, uint _nonce, address _user, uint8 _v, bytes32 _r, bytes32 _s, address _store) external view returns(uint) {
+   
+    return TokenStore(_store).availableVolume(_tokenGet, _amountGet, _tokenGive, _amountGive,_expires, _nonce, _user, _v, _r, _s);
+  }
   
   // End to end trading in a single call (Token Store, EtherDelta)
   function instantTrade(address _tokenGet, uint _amountGet, address _tokenGive, uint _amountGive,
@@ -127,6 +115,25 @@ contract InstantTrade is SafeMath, Ownable {
     }
   }
   
+
+  
+  // return the remaining volume of a 0x order in takerToken (orderAddresses[1]). 
+  function availableVolume0x(address[5] _orderAddresses, uint[6] _orderValues, uint8 _v, bytes32 _r, bytes32 _s) external view returns(uint) {
+    ZeroExchange zrx = ZeroExchange(zeroX);
+    bytes32 orderHash = zrx.getOrderHash(_orderAddresses, _orderValues);
+    
+    if(zrx.isValidSignature(_orderAddresses[0], orderHash, _v, _r, _s)) {
+      uint filled = zrx.getUnavailableTakerTokenAmount(orderHash);
+      if(filled < _orderValues[1]) {
+        return (_orderValues[1] - filled);
+      } else {
+        return 0;
+      }
+    } else {
+      return 0;
+    }
+  }
+
   
   // End to end trading in a single call (0x with open orderbook and 0 ZRX fees)
   function instantTrade0x(address[5] _orderAddresses, uint[6] _orderValues, uint8 _v, bytes32 _r, bytes32 _s, uint _amount) external payable {

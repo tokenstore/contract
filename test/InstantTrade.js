@@ -74,8 +74,8 @@ contract("InstantTrade", function (accounts) {
     return util.signOrder(web3, exchangeAddress, maker, tokenGet, amountGet, tokenGive, amountGive, expires, nonce);
   }
 
-  function sign0xOrder(exchangeAddress, orderAddresses, orderValues, hash) {
-    return util.sign0xOrder(web3, exchangeAddress, orderAddresses, orderValues, hash);
+  function sign0xOrder(exchangeAddress, orderAddresses, orderValues) {
+    return util.sign0xOrder(web3, exchangeAddress, orderAddresses, orderValues);
   }
 
   it("Sell tokens EtherDelta", async function () {
@@ -93,7 +93,7 @@ contract("InstantTrade", function (accounts) {
     let order = signOrder(exchangeAddress, maker, tokenGet, amountGet, tokenGive, amountGive, expires, nonce);
 
     /* check if the order is valid in the contract */
-    let unfilled = await etherDelta.availableVolume(tokenGet, amountGet, tokenGive, amountGive, expires, nonce, maker, order.v, order.r, order.s);
+    let unfilled = await instantTrade.availableVolume(tokenGet, amountGet, tokenGive, amountGive, expires, nonce, maker, order.v, order.r, order.s, etherDelta.address);
     assert.equal(String(unfilled), String(amountGet), "Order is available");
 
 
@@ -136,7 +136,7 @@ contract("InstantTrade", function (accounts) {
     let order = signOrder(exchangeAddress, maker, tokenGet, amountGet, tokenGive, amountGive, expires, nonce);
 
     /* check if the order is valid in the contract */
-    let unfilled = await etherDelta.availableVolume(tokenGet, amountGet, tokenGive, amountGive, expires, nonce, maker, order.v, order.r, order.s);
+    let unfilled = await instantTrade.availableVolume(tokenGet, amountGet, tokenGive, amountGive, expires, nonce, maker, order.v, order.r, order.s, etherDelta.address);
     assert.equal(String(unfilled), String(amountGet), "Order is available");
 
 
@@ -185,15 +185,11 @@ contract("InstantTrade", function (accounts) {
 
     await token.approve(zeroProxy.address, orderValues[0], { from: maker });
 
-    let hash = await zeroX.getOrderHash(orderAddresses, orderValues);
-    let order = sign0xOrder(zeroX.address, orderAddresses, orderValues, hash);
+    let order = sign0xOrder(zeroX.address, orderAddresses, orderValues);
 
     /* check if the order is valid in the contract */
-    assert.equal(hash, order.hash, 'hashes are equal');
-    let valid = await zeroX.isValidSignature(maker, hash, order.v, order.r, order.s);
-    assert(valid, 'order is valid');
-    let filled = await zeroX.getUnavailableTakerTokenAmount(hash);
-    assert.equal(String(filled), "0", "Order is available");
+    let unfilled = await instantTrade.availableVolume0x(orderAddresses, orderValues, order.v, order.r, order.s);
+    assert.equal(String(unfilled), String(orderValues[1]), "Order is available");
 
 
     let etherBalance = await web3.eth.getBalance(taker);
@@ -241,16 +237,11 @@ contract("InstantTrade", function (accounts) {
     await wETH.deposit({ from: maker, value: orderValues[0] });
     await wETH.approve(zeroProxy.address, orderValues[0], { from: maker });
 
-
-    let hash = await zeroX.getOrderHash(orderAddresses, orderValues);
-    let order = sign0xOrder(zeroX.address, orderAddresses, orderValues, hash);
+    let order = sign0xOrder(zeroX.address, orderAddresses, orderValues);
 
     /* check if the order is valid in the contract */
-    assert.equal(hash, order.hash, 'hashes are equal');
-    let valid = await zeroX.isValidSignature(maker, hash, order.v, order.r, order.s);
-    assert(valid, 'order is valid');
-    let filled = await zeroX.getUnavailableTakerTokenAmount(hash);
-    assert.equal(String(filled), "0", "Order is available");
+    let unfilled = await instantTrade.availableVolume0x(orderAddresses, orderValues, order.v, order.r, order.s);
+    assert.equal(String(unfilled), String(orderValues[1]), "Order is available");
 
 
     let amountFee = (orderValues[1] * 1.004); //add 0.4%

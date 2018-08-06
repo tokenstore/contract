@@ -52,23 +52,22 @@ export function signOrder(web3, exchangeAddress, creatorAddress, tokenGet, amoun
   return sig;
 }
 
-export function sign0xOrder(web3, exchangeAddress, orderAddresses, orderValues, orderHash) {
-  /*
-    let values = [exchangeAddress, orderAddresses[0], orderAddresses[1], orderAddresses[2], orderAddresses[3], orderAddresses[4],
-      orderValues[0], orderValues[1], orderValues[2], orderValues[3], orderValues[4], orderValues[5]
-    ];
-    let types = ["address", "address", "address", "address", "address", "address",
-      "uint256", "uint256", "uint256", "uint256", "uint256", "uint256"
-    ];
+export function sign0xOrder(web3, exchangeAddress, orderAddresses, orderValues) {
 
-    hash = `0x${etAbi.soliditySHA256(types, values).toString('hex')}`;
-    */
+  let values = [exchangeAddress, orderAddresses[0], orderAddresses[1], orderAddresses[2], orderAddresses[3], orderAddresses[4],
+    orderValues[0], orderValues[1], orderValues[2], orderValues[3], orderValues[4], orderValues[5]
+  ];
+  let types = ["address", "address", "address", "address", "address", "address",
+    "uint256", "uint256", "uint256", "uint256", "uint256", "uint256"
+  ];
 
-  let sigResult = web3.eth.sign(orderAddresses[0], orderHash);
+  const hash = `0x${ethAbi.soliditySHA3(types, values).toString('hex')}`;
+
+  let sigResult = web3.eth.sign(orderAddresses[0], hash);
   let sig = ethUtil.fromRpcSig(sigResult);
   sig.r = `0x${sig.r.toString('hex')}`;
   sig.s = `0x${sig.s.toString('hex')}`;
-  sig.hash = orderHash;
+  sig.hash = hash;
   return sig;
 }
 
