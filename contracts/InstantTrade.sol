@@ -26,7 +26,7 @@ contract InstantTrade is SafeMath, Ownable {
     
   mapping(address => bool) public allowedFallbacks; // Limit fallback to avoid accidental ETH transfers
     
-  constructor(address _weth, address _zeroX) Ownable() public {
+  function InstantTrade(address _weth, address _zeroX) Ownable() public {
     wETH = _weth;
     zeroX = _zeroX;
     proxyZeroX = ZeroExchange(zeroX).TOKEN_TRANSFER_PROXY_CONTRACT();
@@ -52,7 +52,9 @@ contract InstantTrade is SafeMath, Ownable {
     return TokenStore(_store).availableVolume(_tokenGet, _amountGet, _tokenGive, _amountGive,_expires, _nonce, _user, _v, _r, _s);
   }
   
-  // End to end trading in a single call (Token Store, EtherDelta)
+  /* End to end trading in a single call (Token Store, EtherDelta)
+     Approve 100.4% tokens or send 100.4% ETH to succeed.
+  */
   function instantTrade(address _tokenGet, uint _amountGet, address _tokenGive, uint _amountGive,
     uint _expires, uint _nonce, address _user, uint8 _v, bytes32 _r, bytes32 _s, uint _amount, address _store) external payable {
     
@@ -130,7 +132,9 @@ contract InstantTrade is SafeMath, Ownable {
   }
 
   
-  // End to end trading in a single call (0x with open orderbook and 0 ZRX fees)
+  /* End to end trading in a single call (0x with open orderbook and 0 ZRX fees)
+     Approve 100.4% tokens or send 100.4% ETH to succeed.
+  */
   function instantTrade0x(address[5] _orderAddresses, uint[6] _orderValues, uint8 _v, bytes32 _r, bytes32 _s, uint _amount) external payable {
             
     // Require an undefined taker and 0 maker and taker fee
