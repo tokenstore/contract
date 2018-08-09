@@ -97,7 +97,10 @@ contract("InstantTrade", function (accounts) {
     assert.equal(String(unfilled), String(amountGet), "Order is available");
 
 
-    let amountFee = (amountGet * 1.004); //add 0.4%
+    let amountFee = await instantTrade.getFeeAmount(amountGet); //add 0.4%
+    let amountFee2 = web3.toBigNumber(amountGet).times(1004).div(1000); 
+
+    assert.equal(amountFee.toString(), amountFee2.toString(), 'getFeeAmount return value is correct');
 
     await token.approve(instantTrade.address, amountFee, { from: taker });
 
@@ -143,7 +146,7 @@ contract("InstantTrade", function (accounts) {
     let etherBalance = await web3.eth.getBalance(taker);
     let tokenBalance = await token.balanceOf(taker);
 
-    let amountFee = (amountGet * 1.004); //add 0.4%
+    let amountFee = await instantTrade.getFeeAmount(amountGet); //add 0.4%
 
     let trade = await instantTrade.instantTrade(tokenGet, amountGet, tokenGive, amountGive, expires, nonce, maker, order.v, order.r, order.s, amountGet, exchangeAddress, { from: taker, value: amountFee });
     let gas = trade.receipt.gasUsed * gasPrice;
@@ -198,7 +201,7 @@ contract("InstantTrade", function (accounts) {
     let allowedMaker = await token.allowance(maker, zeroProxy.address);
     assert.equal(String(allowedMaker), String(orderValues[0]), 'maker allowance');
 
-    let amountFee = (orderValues[1] * 1.004); //add 0.4%
+    let amountFee = await instantTrade.getFeeAmount(orderValues[1]); //add 0.4%
 
     let trade = await instantTrade.instantTrade0x(orderAddresses, orderValues, order.v, order.r, order.s, orderValues[1], { from: taker, value: amountFee });
     let gas = trade.receipt.gasUsed * gasPrice;
@@ -244,7 +247,7 @@ contract("InstantTrade", function (accounts) {
     assert.equal(String(unfilled), String(orderValues[1]), "Order is available");
 
 
-    let amountFee = (orderValues[1] * 1.004); //add 0.4%
+    let amountFee = await instantTrade.getFeeAmount(orderValues[1]); //add 0.4%
     await token.approve(instantTrade.address, amountFee, { from: taker });
 
     let etherBalance = await web3.eth.getBalance(taker);

@@ -44,6 +44,10 @@ contract InstantTrade is SafeMath, Ownable {
     allowedFallbacks[_contract] = _allowed;
   }
   
+  // Return the amount required to send or approve, including the fee. (in tokenGet, takerToken)
+  function getFeeAmount(uint _amount) public view returns(uint) {
+    return safeMul(_amount, fee) / 1000;
+  }
   
   // Return the remaining volume of a Token Store order in tokenGet
   function availableVolume(address _tokenGet, uint _amountGet, address _tokenGive, uint _amountGive,
@@ -59,7 +63,7 @@ contract InstantTrade is SafeMath, Ownable {
     uint _expires, uint _nonce, address _user, uint8 _v, bytes32 _r, bytes32 _s, uint _amount, address _store) external payable {
     
     // Reserve the fee
-    uint totalValue = safeMul(_amount, fee) / 1000;
+    uint totalValue = getFeeAmount(_amount);
     
     // Paying with ETH or token? Deposit to the actual store
     if (_tokenGet == address(0)) {
@@ -147,7 +151,7 @@ contract InstantTrade is SafeMath, Ownable {
     WETH wToken = WETH(wETH);
     
     // Reserve the fee
-    uint totalValue = safeMul(_amount, fee) / 1000;
+    uint totalValue = getFeeAmount(_amount);
     
     // Paying with W-ETH or token? 
     if (/*takerToken*/ _orderAddresses[3] == wETH) {
