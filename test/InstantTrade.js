@@ -78,6 +78,16 @@ contract("InstantTrade", function (accounts) {
     return util.sign0xOrder(web3, exchangeAddress, orderAddresses, orderValues);
   }
 
+  function validateTradeEvent(eventLog, tokenGet, amountGet, tokenGive, amountGive, get, give) {
+    assert.equal(eventLog.event, "ITrade", "event correct");
+    assert.equal(eventLog.args.give, give, "give/maker correct");
+    assert.equal(eventLog.args.get, get, "get/taker correct");
+    assert.equal(eventLog.args.tokenGet, tokenGet, "tokenGet/takerToken correct");
+    assert.equal(eventLog.args.tokenGive, tokenGive, "tokenGive/makerToken correct");
+    assert.equal(eventLog.args.amountGet.toString(), amountGet.toString(), "amountGet/takerTokenAmount correct");
+    assert.equal(eventLog.args.amountGive.toString(), amountGive.toString(), "amountGive/makerTokenAmount correct");
+  }
+
   it("Sell tokens EtherDelta", async function () {
 
     let exchangeAddress = etherDelta.address;
@@ -109,6 +119,10 @@ contract("InstantTrade", function (accounts) {
 
     let trade = await instantTrade.instantTrade(tokenGet, amountGet, tokenGive, amountGive, expires, nonce, maker, order.v, order.r, order.s, amountGet, exchangeAddress, { from: taker });
     let gas = trade.receipt.gasUsed * gasPrice;
+
+    // Check event parameters
+    let eventLog = trade.logs[trade.logs.length - 1];
+    validateTradeEvent(eventLog, tokenGet, amountGet, tokenGive, amountGive, taker, maker);
 
     assert.equal(String(await web3.eth.getBalance(taker)), String(etherBalance.plus(amountGive).minus(gas)), "Ether balance normal");
     assert.equal(String(await token.balanceOf(taker)), String(tokenBalance.minus(amountFee)), "Token balance normal");
@@ -150,6 +164,10 @@ contract("InstantTrade", function (accounts) {
 
     let trade = await instantTrade.instantTrade(tokenGet, amountGet, tokenGive, amountGive, expires, nonce, maker, order.v, order.r, order.s, amountGet, exchangeAddress, { from: taker, value: amountFee });
     let gas = trade.receipt.gasUsed * gasPrice;
+
+    // Check event parameters
+    let eventLog = trade.logs[trade.logs.length - 1];
+    validateTradeEvent(eventLog, tokenGet, amountGet, tokenGive, amountGive, taker, maker);
 
     assert.equal(String(await web3.eth.getBalance(taker)), String(etherBalance.minus(amountFee).minus(gas)), "Ether balance normal");
     assert.equal(String(await token.balanceOf(taker)), String(tokenBalance.plus(amountGive)), "Token balance normal");
@@ -206,6 +224,10 @@ contract("InstantTrade", function (accounts) {
     let trade = await instantTrade.instantTrade0x(orderAddresses, orderValues, order.v, order.r, order.s, orderValues[1], { from: taker, value: amountFee });
     let gas = trade.receipt.gasUsed * gasPrice;
 
+    // Check event parameters
+    let eventLog = trade.logs[trade.logs.length - 1];
+    validateTradeEvent(eventLog, orderAddresses[3], orderValues[1], orderAddresses[2], orderValues[0], taker, maker);
+
     assert.equal(String(await web3.eth.getBalance(taker)), String(etherBalance.minus(amountFee).minus(gas)), "Ether balance normal");
     assert.equal(String(await token.balanceOf(taker)), String(tokenBalance.plus(orderValues[0])), "Token balance normal");
 
@@ -260,6 +282,10 @@ contract("InstantTrade", function (accounts) {
 
     let trade = await instantTrade.instantTrade0x(orderAddresses, orderValues, order.v, order.r, order.s, orderValues[1], { from: taker });
     let gas = trade.receipt.gasUsed * gasPrice;
+
+    // Check event parameters
+    let eventLog = trade.logs[trade.logs.length - 1];
+    validateTradeEvent(eventLog, orderAddresses[3], orderValues[1], orderAddresses[2], orderValues[0], taker, maker);
 
     assert.equal(String(await web3.eth.getBalance(taker)), String(etherBalance.plus(orderValues[0]).minus(gas)), "Ether balance normal");
     assert.equal(String(await token.balanceOf(taker)), String(tokenBalance.minus(amountFee)), "Token balance normal");

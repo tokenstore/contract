@@ -25,6 +25,8 @@ contract InstantTrade is SafeMath, Ownable {
   uint256 public fee = 1004; // 1004 is 0.4%  (amount * 1004 / 1000)
     
   mapping(address => bool) public allowedFallbacks; // Limit fallback to avoid accidental ETH transfers
+  
+  event ITrade(address tokenGet, uint amountGet, address tokenGive, uint amountGive, address get, address give);
     
   function InstantTrade(address _weth, address _zeroX) Ownable() public {
     wETH = _weth;
@@ -113,6 +115,8 @@ contract InstantTrade is SafeMath, Ownable {
       // Send tokens back to sender
       require(Token(_tokenGive).transfer(msg.sender, customerValue));
     }
+	
+    emit ITrade(_tokenGet, _amount, _tokenGive, customerValue, msg.sender, _user);
   }
   
 
@@ -192,6 +196,8 @@ contract InstantTrade is SafeMath, Ownable {
       // Send tokens back to sender
       require(Token(_orderAddresses[2]).transfer(msg.sender, customerValue));
     }  
+	
+    emit ITrade(/*takerToken*/ _orderAddresses[3], _amount, /*makerToken*/ _orderAddresses[2], customerValue, msg.sender, /*maker*/ _orderAddresses[0]);
   } 
   
   // Withdraw funds earned from fees
